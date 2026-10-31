@@ -38,10 +38,13 @@ export interface MeaningInput {
   example_fr?: string | null;
 }
 
+export type WordSource = 'personal' | 'official';
+
 export interface WordInput {
   korean: string;
   romanization?: string | null;
   pos?: string | null;
+  source?: WordSource;
   meanings: MeaningInput[];
 }
 
@@ -157,9 +160,12 @@ function wordById(db: DB, id: number): WordDTO | null {
   return assembleWord(db, word, meanings);
 }
 
-export function listWords(db: DB): WordDTO[] {
-  const words = db.prepare('SELECT * FROM words ORDER BY korean').all() as WordRow[];
-  return words.map((w) => wordById(db, w.id)!);
+export function listWords(db: DB, source?: 'personal' | 'official'): WordDTO[] {
+  const rows =
+    source === undefined
+      ? (db.prepare('SELECT * FROM words ORDER BY korean').all() as WordRow[])
+      : (db.prepare('SELECT * FROM words WHERE source = ? ORDER BY korean').all(source) as WordRow[]);
+  return rows.map((w) => wordById(db, w.id)!);
 }
 
 export function getWord(db: DB, id: number): WordDTO | null {
@@ -182,8 +188,8 @@ export function createWord(db: DB, input: WordInput): WordDTO {
   if (existing) throw new ConflictError(`Le mot « ${input.korean} » existe déjà.`);
   const wordId = db.transaction(() => {
     const r = db
-      .prepare('INSERT INTO words (korean, romanization, pos) VALUES (?, ?, ?)')
-      .run(input.korean, input.romanization ?? null, input.pos ?? null);
+      .prepare('INSERT INTO words (korean, romanization, pos, source) VALUES (?, ?, ?, ?)')
+      .run(input.korean, input.romanization ?? null, input.pos ?? null, input.source ?? 'personal');
     const newId = Number(r.lastInsertRowid);
     insertMeanings(db, newId, input.meanings);
     return newId;
@@ -200,10 +206,11 @@ export function replaceWord(db: DB, id: number, input: WordInput): WordDTO | nul
   const current = wordById(db, id);
   if (!current) return null;
   db.transaction(() => {
-    db.prepare('UPDATE words SET korean = ?, romanization = ?, pos = ? WHERE id = ?').run(
+    db.prepare('UPDATE words SET korean = ?, romanization = ?, pos = ?, source = ? WHERE id = ?').run(
       input.korean,
       input.romanization ?? null,
       input.pos ?? null,
+      input.source ?? 'personal',
       id
     );
     const keepIds = new Set<number>();
@@ -248,8 +255,7 @@ function quizCandidates(db: DB): Candidate[] {
   const rows = db
     .prepare(
       `SELECT m.id AS meaning_id, m.context FROM meanings m
-       JOIN words w ON w.id = m.word_id
-       WHERE w.source = 'personal'`
+       JOIN words w ON w.id = m.word_id`
     )
     .all() as { meaning_id: number; context: string | null }[];
   const levels = levelsFor(db);

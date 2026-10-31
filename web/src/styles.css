@@ -376,3 +376,46 @@ a:focus-visible {
   text-align: center;
   padding: 24px;
 }
+
+/* Catégories de dictionnaire */
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.chip-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.badge-src-personal {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge-src-official {
+  background: var(--neutral-soft);
+  color: var(--muted);
+}
+
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+  background: var(--surface);
+}

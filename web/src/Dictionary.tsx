@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LEVEL_LABELS, api } from './api';
-import type { Word } from './api';
+import { LEVEL_LABELS, SOURCE_LABELS, api } from './api';
+import type { Word, WordSource } from './api';
 import { WordForm } from './WordForm';
+
+type Category = 'all' | WordSource;
 
 export function Dictionary(): JSX.Element {
   const [words, setWords] = useState<Word[] | null>(null);
+  const [category, setCategory] = useState<Category>('all');
   const [editing, setEditing] = useState<Word | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +25,7 @@ export function Dictionary(): JSX.Element {
     void refresh();
   }, [refresh]);
 
+
   const remove = async (word: Word) => {
     if (!window.confirm(`Supprimer « ${word.korean} » et son historique ?`)) return;
     try {
@@ -35,16 +39,32 @@ export function Dictionary(): JSX.Element {
   if (words === null) return <p className="empty">Chargement…</p>;
 
   const showForm = creating || editing !== null;
+  const filtered = category === 'all' ? words : words.filter((w) => w.source === category);
   return (
     <>
       <section className="card toolbar" aria-label="Actions du dictionnaire">
-        <h2>Dictionnaire personnel ({words.length} mot{words.length > 1 ? 's' : ''})</h2>
+        <h2>Dictionnaire ({filtered.length} mot{filtered.length > 1 ? 's' : ''})</h2>
         {!showForm && (
           <button type="button" className="primary" onClick={() => setCreating(true)}>
             Ajouter un mot
           </button>
         )}
       </section>
+      {!showForm && (
+        <div className="category-chips" role="group" aria-label="Filtrer par dictionnaire">
+          {(['all', 'personal', 'official'] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={category === c ? 'chip chip-active' : 'chip'}
+              aria-pressed={category === c}
+              onClick={() => setCategory(c)}
+            >
+              {c === 'all' ? 'Tous' : SOURCE_LABELS[c]} ({c === 'all' ? words.length : words.filter((w) => w.source === c).length})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div aria-live="polite">
         {error && (
@@ -77,7 +97,7 @@ export function Dictionary(): JSX.Element {
       )}
 
       <ul className="word-list">
-        {words.map((w) => (
+        {filtered.map((w) => (
           <li key={w.id} className="word-item">
             <div className="word-head">
               <span className="word-korean" lang="ko">
@@ -86,6 +106,7 @@ export function Dictionary(): JSX.Element {
               {w.romanization && <span className="word-meta">{w.romanization}</span>}
               {w.pos && <span className="word-meta">{w.pos}</span>}
               <span className={`badge badge-${w.level}`}>{LEVEL_LABELS[w.level]}</span>
+              <span className={`badge badge-src-${w.source}`}>{SOURCE_LABELS[w.source] ?? w.source}</span>
               <span className="word-actions">
                 <button type="button" className="secondary" onClick={() => setEditing(w)}>
                   Modifier

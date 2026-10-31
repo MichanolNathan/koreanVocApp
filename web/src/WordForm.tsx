@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { api } from './api';
-import type { Word } from './api';
+import { SOURCE_LABELS, api } from './api';
+import type { Word, WordSource } from './api';
 
 interface MeaningDraft {
   id?: number;
@@ -19,6 +19,7 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
   const [korean, setKorean] = useState(initial?.korean ?? '');
   const [romanization, setRomanization] = useState(initial?.romanization ?? '');
   const [pos, setPos] = useState(initial?.pos ?? '');
+  const [source, setSource] = useState<WordSource>(initial?.source === 'official' ? 'official' : 'personal');
   const [meanings, setMeanings] = useState<MeaningDraft[]>(
     initial
       ? initial.meanings.map((m) => ({
@@ -47,6 +48,7 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
       korean,
       romanization: romanization || null,
       pos: pos || null,
+      source,
       meanings: meanings.map((m) => ({
         ...(m.id ? { id: m.id } : {}),
         translation: m.translation,
@@ -87,6 +89,13 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
           <label>
             Catégorie grammaticale
             <input value={pos} onChange={(e) => setPos(e.target.value)} placeholder="nom, verbe…" />
+          </label>
+          <label>
+            Dictionnaire
+            <select value={source} onChange={(e) => setSource(e.target.value as WordSource)}>
+              <option value="personal">{SOURCE_LABELS.personal}</option>
+              <option value="official">{SOURCE_LABELS.official}</option>
+            </select>
           </label>
         </div>
 

@@ -45,6 +45,9 @@ function parseWordInput(body: unknown): ParseResult {
   const o = body as Record<string, unknown>;
   const korean = typeof o.korean === 'string' ? o.korean.trim() : '';
   if (korean.length === 0) errors.push('Mot coréen obligatoire.');
+  if (o.source !== undefined && o.source !== 'personal' && o.source !== 'official') {
+    errors.push('source doit valoir « personal » ou « official ».');
+  }
   let meanings: MeaningInput[] = [];
   if (Array.isArray(o.meanings) && o.meanings.length > 0) {
     meanings = o.meanings.map((m, i) => parseMeaning(m, errors, i));
@@ -54,15 +57,22 @@ function parseWordInput(body: unknown): ParseResult {
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
-    value: { korean, romanization: strOrNU(o.romanization), pos: strOrNU(o.pos), meanings },
+    value: {
+      korean,
+      romanization: strOrNU(o.romanization),
+      pos: strOrNU(o.pos),
+      source: o.source === 'official' ? 'official' : 'personal',
+      meanings,
+    },
   };
 }
 
 export function wordsRouter(db: DB): Router {
   const router = Router();
 
-  router.get('/', (_req, res) => {
-    res.json(listWords(db));
+  router.get('/', (req, res) => {
+    const source = req.query.source;
+    res.json(listWords(db, source === 'personal' || source === 'official' ? source : undefined));
   });
 
   router.post('/', (req, res) => {

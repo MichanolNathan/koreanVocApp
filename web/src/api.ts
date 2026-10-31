@@ -7,6 +7,12 @@ export const LEVEL_LABELS: Record<Level, string> = {
   new: 'Non évalué',
 };
 
+export type WordSource = 'personal' | 'official';
+
+export const SOURCE_LABELS: Record<WordSource, string> = {
+  personal: 'Personnel',
+  official: 'Officiel',
+};
 export interface Meaning {
   id: number;
   translation: string;
@@ -25,8 +31,7 @@ export interface Word {
   korean: string;
   romanization: string | null;
   pos: string | null;
-  source: string;
-  created_at: string;
+  source: WordSource;
   level: Level;
   meanings: Meaning[];
 }
@@ -130,7 +135,8 @@ export interface SessionSummary {
 }
 
 export const api = {
-  listWords: (): Promise<Word[]> => req('/words', 'GET'),
+  listWords: (source?: WordSource): Promise<Word[]> =>
+    req(source ? `/words?source=${source}` : '/words', 'GET'),
   createWord: (w: unknown): Promise<Word> => req('/words', 'POST', w),
   updateWord: (id: number, w: unknown): Promise<Word> => req(`/words/${id}`, 'PUT', w),
   deleteWord: (id: number): Promise<void> => req(`/words/${id}`, 'DELETE'),
