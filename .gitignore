@@ -5,3 +5,4 @@ server/data/
 *.sqlite-*
 server/smoke.mjs
 server/smoke-quiz.mjs
+server/smoke-stats.mjs
