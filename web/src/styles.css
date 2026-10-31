@@ -314,7 +314,28 @@ textarea {
 .result-ko {
   background: var(--bad-soft);
 }
-input:focus-visible,
+
+/* Progrès / historique */
+.level-grid {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 10px 0;
+}
+
+.level-grid li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card h3 {
+  margin: 14px 0 6px;
+  font-size: 1rem;
+}
+
 textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {

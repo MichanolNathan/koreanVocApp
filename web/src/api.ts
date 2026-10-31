@@ -119,6 +119,16 @@ export interface SessionResults {
   }[];
 }
 
+export interface SessionSummary {
+  id: number;
+  mode: string;
+  context_filter: string | null;
+  started_at: string;
+  finished_at: string | null;
+  correct: number;
+  total: number;
+}
+
 export const api = {
   listWords: (): Promise<Word[]> => req('/words', 'GET'),
   createWord: (w: unknown): Promise<Word> => req('/words', 'POST', w),
@@ -132,4 +142,5 @@ export const api = {
   hint: (sessionId: number, questionId: number): Promise<{ hint: string | null }> =>
     req(`/sessions/${sessionId}/questions/${questionId}/hint`, 'POST'),
   results: (sessionId: number): Promise<SessionResults> => req(`/sessions/${sessionId}/results`, 'GET'),
+  listSessions: (): Promise<SessionSummary[]> => req('/sessions', 'GET'),
 };
