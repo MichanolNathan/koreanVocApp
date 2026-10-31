@@ -53,6 +53,8 @@ export interface SessionQuestionView {
   pos: string | null;
   hintAvailable: boolean;
   answered: boolean;
+  userAnswer: string | null;
+  correct: boolean | null;
 }
 
 interface WordRow {
@@ -293,6 +295,8 @@ export function createSession(db: DB, mode: QuizMode, context: string | null): C
         pos: m.pos,
         hintAvailable: m.hint !== null,
         answered: false,
+        userAnswer: null,
+        correct: null,
       });
     });
     return { sessionId: sid, questions };
@@ -331,10 +335,50 @@ function questionRows(db: DB, sessionId: number): QuestionRow[] {
   return db.prepare('SELECT * FROM questions WHERE session_id = ? ORDER BY position').all(sessionId) as QuestionRow[];
 }
 
-export function getSession(db: DB, id: number): { session: SessionRow; questions: QuestionRow[] } | null {
+export interface SessionView {
+  id: number;
+  mode: string;
+  context_filter: string | null;
+  started_at: string;
+  finished_at: string | null;
+  questions: SessionQuestionView[];
+}
+
+export function getSessionView(db: DB, id: number): SessionView | null {
   const s = sessionRow(db, id);
   if (!s) return null;
-  return { session: s, questions: questionRows(db, id) };
+  const info = new Map(
+    (
+      db
+        .prepare(
+          `SELECT m.id AS meaning_id, w.korean, w.romanization, w.pos, m.hint
+           FROM meanings m JOIN words w ON w.id = m.word_id`
+        )
+        .all() as { meaning_id: number; korean: string; romanization: string | null; pos: string | null; hint: string | null }[]
+    ).map((r) => [r.meaning_id, r])
+  );
+  const questions: SessionQuestionView[] = questionRows(db, id).map((q) => {
+    const m = info.get(q.meaning_id)!;
+    return {
+      id: q.id,
+      position: q.position,
+      korean: m.korean,
+      romanization: m.romanization,
+      pos: m.pos,
+      hintAvailable: m.hint !== null,
+      answered: q.answered === 1,
+      userAnswer: q.user_answer,
+      correct: q.correct === null ? null : q.correct === 1,
+    };
+  });
+  return {
+    id: s.id,
+    mode: s.mode,
+    context_filter: s.context_filter,
+    started_at: s.started_at,
+    finished_at: s.finished_at,
+    questions,
+  };
 }
 
 export function getHint(db: DB, sessionId: number, questionId: number): string | null | undefined {
