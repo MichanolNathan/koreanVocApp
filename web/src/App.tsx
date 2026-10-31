@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Dictionary } from './Dictionary';
+import { Quiz } from './Quiz';
 
 export function App(): JSX.Element {
-  const [view, setView] = useState<'dictionary'>('dictionary');
+  const [view, setView] = useState<'dictionary' | 'quiz'>('dictionary');
   return (
     <div className="app">
       <header className="app-header">
@@ -15,9 +16,15 @@ export function App(): JSX.Element {
           >
             Dictionnaire
           </button>
+          <button type="button" className={view === 'quiz' ? 'nav-active' : ''} onClick={() => setView('quiz')}>
+            Réviser
+          </button>
         </nav>
       </header>
-      <main>{view === 'dictionary' && <Dictionary />}</main>
+      <main>
+        {view === 'dictionary' && <Dictionary />}
+        {view === 'quiz' && <Quiz />}
+      </main>
     </div>
   );
 }

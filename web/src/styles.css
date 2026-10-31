@@ -244,6 +244,76 @@ textarea {
   width: 100%;
 }
 
+/* Quiz */
+.quiz-card {
+  text-align: center;
+}
+
+.quiz-progress {
+  color: var(--muted);
+  margin: 0;
+}
+
+.quiz-word {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+.quiz-card form {
+  max-width: 420px;
+  margin: 16px auto 0;
+  text-align: left;
+}
+
+.quiz-card .form-actions {
+  justify-content: center;
+}
+
+.radio-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  grid-auto-flow: column;
+}
+
+.radio-line input {
+  width: auto;
+}
+
+.feedback {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.result-stats {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 1.05rem;
+}
+
+.result-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 20px;
+}
+
+.result-list li {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.result-ok {
+  background: var(--ok-soft);
+}
+
+.result-ko {
+  background: var(--bad-soft);
+}
 input:focus-visible,
 textarea:focus-visible,
 button:focus-visible,
