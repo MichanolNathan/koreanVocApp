@@ -3,3 +3,4 @@ dist/
 server/data/
 *.sqlite
 *.sqlite-*
+server/smoke.mjs
