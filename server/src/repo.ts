@@ -248,22 +248,25 @@ export interface CreatedSession {
   id: number;
   mode: QuizMode;
   contextFilter: string | null;
+  sourceFilter: WordSource | null;
   questions: SessionQuestionView[];
 }
 
-function quizCandidates(db: DB): Candidate[] {
-  const rows = db
-    .prepare(
-      `SELECT m.id AS meaning_id, m.context FROM meanings m
-       JOIN words w ON w.id = m.word_id`
-    )
-    .all() as { meaning_id: number; context: string | null }[];
+function quizCandidates(db: DB, source?: WordSource): Candidate[] {
+  const sql =
+    source === undefined
+      ? `SELECT m.id AS meaning_id, m.context FROM meanings m JOIN words w ON w.id = m.word_id`
+      : `SELECT m.id AS meaning_id, m.context FROM meanings m JOIN words w ON w.id = m.word_id WHERE w.source = ?`;
+  const rows = (source === undefined ? db.prepare(sql).all() : db.prepare(sql).all(source)) as {
+    meaning_id: number;
+    context: string | null;
+  }[];
   const levels = levelsFor(db);
   return rows.map((r) => ({ meaningId: r.meaning_id, level: levels.get(r.meaning_id)?.level ?? 'new', context: r.context }));
 }
 
-export function createSession(db: DB, mode: QuizMode, context: string | null): CreatedSession | null {
-  const candidates = quizCandidates(db);
+export function createSession(db: DB, mode: QuizMode, context: string | null, source?: WordSource): CreatedSession | null {
+  const candidates = quizCandidates(db, source);
   const selected = selectQuestions(candidates, mode, context);
   if (selected.length === 0) return null;
   const info = new Map(
@@ -284,7 +287,7 @@ export function createSession(db: DB, mode: QuizMode, context: string | null): C
     ).map((r) => [r.meaning_id, r])
   );
   const { sessionId, questions } = db.transaction(() => {
-    const s = db.prepare('INSERT INTO sessions (mode, context_filter) VALUES (?, ?)').run(mode, context);
+    const s = db.prepare('INSERT INTO sessions (mode, context_filter, source_filter) VALUES (?, ?, ?)').run(mode, context, source ?? null);
     const sid = Number(s.lastInsertRowid);
     const insQ = db.prepare(
       'INSERT INTO questions (session_id, meaning_id, position, expected_translation) VALUES (?, ?, ?, ?)'
@@ -307,7 +310,7 @@ export function createSession(db: DB, mode: QuizMode, context: string | null): C
     });
     return { sessionId: sid, questions };
   });
-  return { id: sessionId, mode, contextFilter: context, questions };
+  return { id: sessionId, mode, contextFilter: context, sourceFilter: source ?? null, questions };
 }
 
 interface QuestionRow {
@@ -329,6 +332,7 @@ interface SessionRow {
   exercise_type: string;
   mode: string;
   context_filter: string | null;
+  source_filter: WordSource | null;
   started_at: string;
   finished_at: string | null;
 }
@@ -345,6 +349,7 @@ export interface SessionView {
   id: number;
   mode: string;
   context_filter: string | null;
+  source_filter: WordSource | null;
   started_at: string;
   finished_at: string | null;
   questions: SessionQuestionView[];
@@ -381,6 +386,7 @@ export function getSessionView(db: DB, id: number): SessionView | null {
     id: s.id,
     mode: s.mode,
     context_filter: s.context_filter,
+    source_filter: s.source_filter,
     started_at: s.started_at,
     finished_at: s.finished_at,
     questions,
@@ -466,6 +472,7 @@ export interface SessionSummary {
   id: number;
   mode: string;
   context_filter: string | null;
+  source_filter: WordSource | null;
   started_at: string;
   finished_at: string | null;
   correct: number;
@@ -475,7 +482,7 @@ export interface SessionSummary {
 export function listSessions(db: DB): SessionSummary[] {
   const rows = db
     .prepare(
-      `SELECT s.id, s.mode, s.context_filter, s.started_at, s.finished_at,
+      `SELECT s.id, s.mode, s.context_filter, s.source_filter, s.started_at, s.finished_at,
               COALESCE(SUM(q.correct), 0) AS correct, COUNT(q.id) AS total
        FROM sessions s LEFT JOIN questions q ON q.session_id = s.id
        GROUP BY s.id ORDER BY s.id DESC`
@@ -542,6 +549,7 @@ export function getResults(db: DB, id: number): SessionResults | null {
     id: s.id,
     mode: s.mode,
     context_filter: s.context_filter,
+    source_filter: s.source_filter,
     started_at: s.started_at,
     finished_at: s.finished_at,
     correct,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { LEVEL_LABELS, api } from './api';
-import type { SessionSummary, Stats } from './api';
+import { LEVEL_LABELS, SOURCE_LABELS, api } from './api';
+import type { SessionSummary, Stats, WordSource } from './api';
 
 const MODE_LABELS: Record<string, string> = {
   standard: 'Standard',
@@ -107,6 +107,7 @@ export function History(): JSX.Element {
                 </strong>
                 <span className="word-meta">{MODE_LABELS[s.mode] ?? s.mode}</span>
                 {s.context_filter && <span className="word-meta">· {s.context_filter}</span>}
+                {s.source_filter && <span className="word-meta">· {SOURCE_LABELS[s.source_filter as WordSource] ?? s.source_filter}</span>}
               </div>
               <p className="meaning-detail">{formatDate(s.started_at)}{s.finished_at ? '' : ' (en cours)'}</p>
             </li>

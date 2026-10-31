@@ -128,6 +128,7 @@ export interface SessionSummary {
   id: number;
   mode: string;
   context_filter: string | null;
+  source_filter: string | null;
   started_at: string;
   finished_at: string | null;
   correct: number;
@@ -141,8 +142,8 @@ export const api = {
   updateWord: (id: number, w: unknown): Promise<Word> => req(`/words/${id}`, 'PUT', w),
   deleteWord: (id: number): Promise<void> => req(`/words/${id}`, 'DELETE'),
   stats: (): Promise<Stats> => req('/stats', 'GET'),
-  createSession: (mode: string, context?: string): Promise<SessionCreated> =>
-    req('/sessions', 'POST', { mode, ...(context ? { context } : {}) }),
+  createSession: (mode: string, context?: string, source?: WordSource): Promise<SessionCreated> =>
+    req('/sessions', 'POST', { mode, ...(context ? { context } : {}), ...(source ? { source } : {}) }),
   answer: (sessionId: number, questionId: number, answer: string): Promise<AnswerFeedback> =>
     req(`/sessions/${sessionId}/questions/${questionId}/answer`, 'POST', { answer }),
   hint: (sessionId: number, questionId: number): Promise<{ hint: string | null }> =>

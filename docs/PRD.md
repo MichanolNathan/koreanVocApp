@@ -94,6 +94,8 @@ Tous en 15 questions (ou moins si insuffisamment de candidats, complétion par p
 - **Mixte** : 70 % faibles (non maîtrisées + à renforcer), 30 % autres.
 - **Par contexte** : significations d'un contexte donné, complétées par tirage pondéré standard.
 
+**Dictionnaire source** (v0.2.1) : chaque session peut être limitée à un dictionnaire — `personnel`, `officiel` ou tous (défaut). Le choix est enregistré sur la session (`source_filter`) et affiché dans l'historique. Par défaut les quiz tirent des deux dictionnaires (PRD §7 : exercices indépendants de la source).
+
 Maîtrise recalculée après chaque session (à la lecture, à partir du journal — pas de dérivation stockée sujette à incohérence).
 
 ## 7. ARCHITECTURE

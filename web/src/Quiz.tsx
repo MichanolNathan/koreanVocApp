@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from './api';
-import type { AnswerFeedback, SessionCreated, SessionQuestion, SessionResults } from './api';
+import { SOURCE_LABELS, api } from './api';
+import type { AnswerFeedback, SessionCreated, SessionQuestion, SessionResults, WordSource } from './api';
 
 type Phase =
   | { step: 'setup' }
@@ -53,6 +53,7 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
   const [mode, setMode] = useState('standard');
   const [contexts, setContexts] = useState<string[]>([]);
   const [context, setContext] = useState('');
+  const [source, setSource] = useState<'all' | WordSource>('all');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,7 +68,7 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
     setBusy(true);
     setError(null);
     try {
-      onStart(await api.createSession(mode, mode === 'context' ? context : undefined));
+      onStart(await api.createSession(mode, mode === 'context' ? context : undefined, source === 'all' ? undefined : source));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
@@ -115,6 +116,14 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
             </select>
           </label>
         )}
+        <label>
+          Dictionnaire
+          <select value={source} onChange={(e) => setSource(e.target.value as 'all' | WordSource)}>
+            <option value="all">Tous les dictionnaires</option>
+            <option value="personal">{SOURCE_LABELS.personal}</option>
+            <option value="official">{SOURCE_LABELS.official}</option>
+          </select>
+        </label>
         {error && (
           <p className="status status-error" role="alert">
             {error}

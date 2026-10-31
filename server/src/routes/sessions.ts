@@ -22,7 +22,11 @@ export function sessionsRouter(db: DB): Router {
     }
     const context = typeof body.context === 'string' && body.context.trim().length > 0 ? body.context.trim() : null;
     if (mode === 'context' && !context) return res.status(400).json({ error: 'Mode « context » : précisez un contexte.' });
-    const session = createSession(db, mode as QuizMode, context);
+    if (body.source !== undefined && body.source !== 'personal' && body.source !== 'official') {
+      return res.status(400).json({ error: 'source doit valoir « personal » ou « official ».' });
+    }
+    const source = body.source === 'personal' || body.source === 'official' ? body.source : undefined;
+    const session = createSession(db, mode as QuizMode, context, source);
     if (!session) return res.status(409).json({ error: 'Aucune signification disponible — ajoutez des mots au dictionnaire.' });
     res.status(201).json(session);
   });

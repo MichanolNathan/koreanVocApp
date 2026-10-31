@@ -72,6 +72,7 @@ const SCHEMA = `
     exercise_type TEXT NOT NULL DEFAULT 'translation',
     mode TEXT NOT NULL,
     context_filter TEXT,
+    source_filter TEXT,
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     finished_at TEXT
   );
@@ -117,6 +118,11 @@ export async function openDb(path: string): Promise<DB> {
   const raw = new SQL.Database(path !== ':memory:' && existsSync(path) ? readFileSync(path) : undefined) as unknown as RawDatabase;
   raw.exec('PRAGMA foreign_keys = ON;');
   raw.exec(SCHEMA);
+  // Bases créées avant la v0.2.1 : ajout de sessions.source_filter
+  const sessionCols = raw.exec("PRAGMA table_info(sessions)") as unknown as { columns: string[]; values: unknown[][] }[];
+  if (!(sessionCols[0]?.columns ?? []).includes('source_filter')) {
+    raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
+  }
 
   const persist = (): void => {
     if (path === ':memory:') return;
