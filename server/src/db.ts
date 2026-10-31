@@ -119,8 +119,10 @@ export async function openDb(path: string): Promise<DB> {
   raw.exec('PRAGMA foreign_keys = ON;');
   raw.exec(SCHEMA);
   // Bases créées avant la v0.2.1 : ajout de sessions.source_filter
-  const sessionCols = raw.exec("PRAGMA table_info(sessions)") as unknown as { columns: string[]; values: unknown[][] }[];
-  if (!(sessionCols[0]?.columns ?? []).includes('source_filter')) {
+  const pragma = raw.exec('PRAGMA table_info(sessions)') as unknown as { columns: string[]; values: unknown[][] }[];
+  const nameIdx = pragma[0]?.columns.indexOf('name') ?? -1;
+  const tableCols = new Set((pragma[0]?.values ?? []).map((row) => String(row[nameIdx])));
+  if (!tableCols.has('source_filter')) {
     raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
   }
 
