@@ -8,7 +8,19 @@ import { join } from 'node:path';
 import initSqlJs from 'sql.js';
 import { openDb, type DB } from './db.ts';
 import { loadPhraseLibrary } from './phrase-library.ts';
-import { answerQuestion, computeStats, createSession, createWord, getHint, getResults, getSessionView } from './repo.ts';
+import { loadOfficialDictionary, OFFICIAL_DICTIONARY } from './official-dictionary.ts';
+import {
+  answerQuestion,
+  computeStats,
+  createSession,
+  createWord,
+  deleteWord,
+  getHint,
+  getResults,
+  getSessionView,
+  listWords,
+  replaceWord,
+} from './repo.ts';
 import { checkAnswer, checkPhraseAnswer, QUIZ_LENGTH } from './engine.ts';
 
 async function freshDb(words = 20): Promise<DB> {
@@ -190,4 +202,45 @@ test('migration v0.3 : base v0.2.1 reconstruite avec sauvegarde du fichier, donn
   db.prepare("INSERT INTO questions (session_id, kind, phrase_id, position, expected_translation) VALUES (1, 'phrase', 7, 2, 'bonjour.')").run();
   await openDb(dbPath);
   assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1);
+});
+
+// --- Dictionnaire officiel livré (v1.1.1) ------------------------------------
+
+test('dictionnaire officiel : livraison idempotente, source official', async () => {
+  const db = await openDb(':memory:');
+  const first = loadOfficialDictionary(db);
+  assert.equal(first, OFFICIAL_DICTIONARY.length);
+  assert.equal(loadOfficialDictionary(db), 0, 'rechargement : rien à ajouter');
+  assert.equal(listWords(db, 'official').length, OFFICIAL_DICTIONARY.length);
+  const dup = db
+    .prepare('SELECT COUNT(*) AS n FROM (SELECT korean FROM words GROUP BY korean HAVING COUNT(*) > 1)')
+    .get() as { n: number };
+  assert.equal(dup.n, 0);
+});
+
+test('dictionnaire officiel : suppression définitive (tombstone) et éditions préservées', async () => {
+  const db = await openDb(':memory:');
+  loadOfficialDictionary(db);
+
+  // Suppression utilisateur : pas de réinjection au démarrage suivant.
+  const victim = listWords(db).find((w) => w.korean === '주말')!;
+  assert.ok(deleteWord(db, victim.id));
+  assert.equal(loadOfficialDictionary(db), 0);
+  assert.ok(!listWords(db).some((w) => w.korean === '주말'), 'le mot supprimé ne doit pas revenir');
+
+  // Édition utilisateur : jamais écrasée par un redémarrage.
+  const coffee = listWords(db).find((w) => w.korean === '커피')!;
+  replaceWord(db, coffee.id, { korean: '커피', meanings: [{ translation: 'boisson caféinée' }] });
+  assert.equal(loadOfficialDictionary(db), 0);
+  const after = listWords(db).find((w) => w.korean === '커피')!;
+  assert.equal(after.meanings[0]!.translation, 'boisson caféinée');
+});
+
+test('dictionnaire officiel : un mot personnel homonyme prime et n’est pas converti', async () => {
+  const db = await openDb(':memory:');
+  createWord(db, { korean: '차', meanings: [{ translation: 'voiture' }], source: 'personal' });
+  assert.equal(loadOfficialDictionary(db), OFFICIAL_DICTIONARY.length - 1, '차 est déjà présent → ignoré');
+  const tea = listWords(db).find((w) => w.korean === '차')!;
+  assert.equal(tea.source, 'personal');
+  assert.equal(tea.meanings[0]!.translation, 'voiture');
 });

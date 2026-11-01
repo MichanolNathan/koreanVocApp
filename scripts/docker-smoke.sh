@@ -60,6 +60,12 @@ pass "client statique servi à /"
 curl -fsS "$base/api/words" | grep -q '^\[' || fail "GET /api/words ne renvoie pas une liste JSON"
 pass "GET /api/words -> liste JSON"
 
+# 4b. Dictionnaire officiel livré : disponible dès l'installation.
+noff="$(curl -fsS "$base/api/words?source=official" | grep -o '"source":"official"' | wc -l | tr -d ' ')"
+[ "$noff" -ge 40 ] || fail "dictionnaire officiel : $noff mots, au moins 40 attendus"
+curl -fsS "$base/api/words?source=official" | grep -q '주말' || fail "dictionnaire officiel : 주말 absent"
+pass "dictionnaire officiel livré ($noff mots)"
+
 # 5. Écriture API : POST puis relecture du mot créé.
 #    Le corps passe par un fichier (--data-binary @) : certains curl Windows
 #    mutilent l'UTF-8 passé en argument ; les octets d'un fichier restent exacts.

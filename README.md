@@ -7,6 +7,7 @@ Cadrage fonctionnel : [`docs/PRD.md`](docs/PRD.md) (V1) et [`docs/PRD_iteration_
 ## Fonctionnalités
 
 - **Dictionnaire personnel** : mots coréens avec romanisation, catégorie grammaticale, et une ou plusieurs **significations** (traduction principale + traductions alternatives acceptées, indice, contexte, exemples).
+- **Dictionnaire officiel intégré** : 44 mots et expressions débutant livrés avec l'application (issus d'un deck Anki, traduits en français), disponibles dès l'installation et enrichis par les mises à jour. Les éditions et suppressions de l'utilisateur priment : le chargeur n'insère que des mots jamais livrés (registre interne `shipped_words`).
 - **Quiz de vocabulaire** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
 - **Quiz de phrases** (itération 2) : traduction de phrases coréennes débutantes (repère A1) issues d'une **bibliothèque de 80 phrases intégrée** — 7 thèmes du quotidien, aucune connexion nécessaire, aucune édition manuelle. Indice par phrase, traductions alternatives acceptées.
 - **Quiz mixte** : 15 questions — exactement 8 de vocabulaire et 7 de phrases, ordre mélangé — avec résultats ventilés par catégorie.
@@ -42,7 +43,7 @@ Cycle de release :
 
 ## Architecture
 
-- `server/` — Node + TypeScript + Express. SQLite via **sql.js** (WASM, zéro module natif : aucune chaîne de compilation nécessaire). La base tient en mémoire et est persistée dans un fichier unique à chaque écriture. Validation des réponses exclusivement côté serveur (les traductions attendues ne quittent jamais le serveur avant la réponse). Modules : `db` (schéma + migrations), `phrase-library` (bibliothèque intégrée, chargée/upsertée au démarrage), `mastery` (EWMA), `engine` (sélection + validation), `repo` + `routes` (API).
+- `server/` — Node + TypeScript + Express. SQLite via **sql.js** (WASM, zéro module natif : aucune chaîne de compilation nécessaire). La base tient en mémoire et est persistée dans un fichier unique à chaque écriture. Validation des réponses exclusivement côté serveur (les traductions attendues ne quittent jamais le serveur avant la réponse). Modules : `db` (schéma + migrations), `phrase-library` (bibliothèque de phrases) et `official-dictionary` (dictionnaire officiel), tous deux chargés au démarrage, `mastery` (EWMA), `engine` (sélection + validation), `repo` + `routes` (API).
 - `web/` — SPA React + TypeScript (Vite). Responsive PC/mobile, utilisable au clavier, `aria-live` sur les retours.
 - En production, **un seul processus** : le serveur sert l'API (`/api/*`) et le build statique du client.
 
