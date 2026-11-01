@@ -47,28 +47,15 @@ Variables d'environnement : `PORT` (défaut 3001), `DB_PATH` (défaut `server/da
 
 ### Déploiement VPS / cloud
 
-**Via CI GitLab (recommandé)** — `.gitlab-ci.yml` enchaîne `test:server` → `build-image` (image Docker multi-stage poussée dans le Container Registry) → `deploy:production` (SSH sur le VPS : pull, sauvegarde de la base, `docker compose up -d`). Déploiement automatique à chaque push sur `main`.
-
-Prérequis VPS : Docker + plugin `docker compose`, accès SSH par clé. Variables CI/CD à définir (Settings > CI/CD > Variables, protégées + masquées) :
-
-| Variable | Rôle |
-|---|---|
-| `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PATH` | cible SSH et répertoire (ex. `/opt/myflashcardapp`) |
-| `SSH_PRIVATE_KEY` | clé privée OpenSSH du déploiement (type *File*) |
-| `REGISTRY_TOKEN_USER` / `REGISTRY_TOKEN_PASSWORD` | *deploy token* projet avec `read_registry` (pull depuis le VPS) |
-
-Sur un runner partagé gitlab.com, l'image est construite via Docker-in-Docker (`services: docker:dind`) ; sur un runner auto-hébergé, exposer le socket Docker ou activer dind.
-
-**Manuel (sans CI)** :
-
 ```bash
 docker build -t myflashcardapp .
-mkdir -p data && IMAGE=myflashcardapp docker compose up -d
+mkdir -p data && docker compose up -d   # base SQLite persistée dans ./data
 ```
 
 Derrière un reverse-proxy HTTPS (Caddy/Nginx) ou via Tailscale — requis pour la PWA (contexte sécurisé).
 
-**Sauvegarde** : la CI copie `data/app.db` avant chaque déploiement (`data/backup-*.app.db`) ; l'exporter aussi régulièrement hors du VPS — c'est le seul fichier d'état.
+**Sauvegarde** : `data/app.db` est le seul fichier d'état — le copier avant chaque mise à jour
+(`cp data/app.db "data/backup-$(date +%Y%m%d-%H%M%S).app.db"`) et l'exporter régulièrement hors du VPS.
 
 ### PWA — installation sur téléphone
 

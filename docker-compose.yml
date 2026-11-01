@@ -1,8 +1,8 @@
-# Déploiement production sur le VPS — copié par le job `deploy:production` (.gitlab-ci.yml).
-# La base (SQLite) vit dans ./data sur l'hôte ; sauvegardée avant chaque `up`.
+# Déploiement production — la base (SQLite) vit dans ./data sur l'hôte (sauvegarder avant chaque `up`).
+# IMAGE permet de surcharger le nom d'image utilisé (défaut : myflashcardapp:latest).
 services:
   app:
-    image: ${IMAGE:?IMAGE requis — défini par la CI}
+    image: ${IMAGE:-myflashcardapp:latest}
     container_name: myflashcardapp
     restart: unless-stopped
     ports:
