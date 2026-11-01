@@ -12,18 +12,31 @@ Le cadrage fonctionnel complet et les décisions verrouillées sont dans [`docs/
 - **Analyse et quiz ciblés** : points faibles, dépendance aux indices, contextes problématiques ; modes Standard (pondéré par faiblesse), Non maîtrisées, À renforcer, Mixte (70/30), Par contexte. Chaque quiz peut cibler un dictionnaire : Personnel, Officiel ou tous.
 - **Historique** des sessions avec résultats détaillés.
 
-## Branches & validation des images
+## Branches & workflow de release
 
-- `main` — code en production (image déployée sur le VPS). Pas de commit direct.
 - `develop` — branche de développement courant : tout le travail part d'ici.
 - `test` — couloir de validation des images Docker : merger `develop` dans `test`
-  (puis pousser) déclenche le workflow *test-images-docker*
+  (puis pousser) déclenche *test-images-docker*
   ([`.github/workflows/docker-test.yml`](.github/workflows/docker-test.yml)) :
-  build des deux images (`Dockerfile.db` puis `Dockerfile`) et test fonctionnel du
+  build des deux images (`Dockerfile.db` puis `Dockerfile`) et smoke test du
   conteneur ([`scripts/docker-smoke.sh`](scripts/docker-smoke.sh) : démarrage,
   initialisation de la base dans le volume, client statique, lecture/écriture API,
-  validation d'entrée, persistance après redémarrage). Une image ne part en
-  production que si ce job est vert.
+  validation d'entrée, persistance après redémarrage).
+- `main` — production, protégée : PR obligatoire, check *release-gate* requis,
+  pas de push direct.
+
+Cycle de release :
+
+1. Merger `develop` dans `test` et pousser → la CI de test doit être verte.
+2. Ouvrir la PR `develop` → `main`, accompagnée d'un tag `vX.Y.Z`. Le workflow
+   *release-gate* ([`.github/workflows/release-gate.yml`](.github/workflows/release-gate.yml))
+   rend la PR non mergeable tant que le code de la PR n'est pas sur `test` avec
+   une CI de test réussie (il attend la fin d'un run en cours).
+3. Merger la PR → *release-build*
+   ([`.github/workflows/release-build.yml`](.github/workflows/release-build.yml))
+   build les images, rejoue le smoke test puis publie sur GHCR : `:latest` à la
+   fusion, `:X.Y.Z` au push du tag `vX.Y.Z`.
+
 
 ## Architecture
 
@@ -66,6 +79,12 @@ docker build -f Dockerfile.db -t myflashcardapp/db .
 # 2. Image applicative — le build échoue si l'image de données n'existe pas
 docker build -t myflashcardapp .
 mkdir -p data && docker compose up -d   # base persistée dans ./data, initialisée depuis /seed au 1er démarrage
+```
+
+Alternative : tirer l'image publiée par la CI de release plutôt que de builder sur le VPS :
+
+```bash
+IMAGE=ghcr.io/michanolnathan/koreanvocapp/myflashcardapp:latest docker compose up -d
 ```
 
 Derrière un reverse-proxy HTTPS (Caddy/Nginx) ou via Tailscale — requis pour la PWA (contexte sécurisé).

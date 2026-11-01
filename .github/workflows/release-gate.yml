@@ -1,0 +1,50 @@
+# Release gate — bloque toute PR vers main tant que la CI de la branche test
+# n'est pas verte sur le code exact de la PR :
+#   1. la branche test doit contenir le head de la PR (develop mergé dans test) ;
+#   2. le dernier run test-images-docker sur test doit être un succès
+#      (le gate attend la fin du run s'il est encore en cours).
+# Check requis sur main (règles de branche) : « release-gate / gate ».
+name: release-gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que test contient le code de la PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_head="${{ github.event.pull_request.head.sha }}"
+          status="$(gh api "repos/${{ github.repository }}/compare/${pr_head}...test" --jq .status)"
+          if [ "$status" != "ahead" ] && [ "$status" != "identical" ]; then
+            echo "::error::Le code de la PR (${pr_head:0:7}) n'est pas sur test (statut : $status). Merger develop dans test et pousser pour déclencher la CI de test."
+            exit 1
+          fi
+          echo "OK : test contient ${pr_head:0:7}"
+
+      - name: Vérifier que la CI de test est verte
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last="$(gh run list --workflow docker-test.yml --branch test --limit 1 --json databaseId,status,conclusion)"
+          echo "Dernier run sur test : $last"
+          status="$(printf '%s' "$last" | jq -r '.[0].status')"
+          id="$(printf '%s' "$last" | jq -r '.[0].databaseId')"
+          if [ "$status" != "completed" ]; then
+            echo "CI de test en cours — attente du run $id"
+            gh run watch "$id" --exit-status --interval 10
+          elif [ "$(printf '%s' "$last" | jq -r '.[0].conclusion')" != "success" ]; then
+            echo "::error::La CI de test a échoué — corriger, re-merger develop dans test et attendre le vert."
+            exit 1
+          else
+            echo "OK : CI de test verte (run $id)"
+          fi
