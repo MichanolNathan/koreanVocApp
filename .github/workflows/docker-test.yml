@@ -1,0 +1,24 @@
+# Branche `test` — build des images Docker et vérification fonctionnelle.
+# Déclenché à chaque push sur `test` (ou manuellement via workflow_dispatch) :
+# merger `develop` dans `test` valide l'image produite avant fusion vers `main`.
+name: test-images-docker
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build de l'image de données (base SQLite initiale)
+        run: docker build -f Dockerfile.db -t myflashcardapp/db .
+
+      - name: Build de l'image applicative
+        run: docker build -t myflashcardapp:test .
+
+      - name: Test fonctionnel du conteneur
+        run: ./scripts/docker-smoke.sh myflashcardapp:test

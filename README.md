@@ -12,6 +12,19 @@ Le cadrage fonctionnel complet et les décisions verrouillées sont dans [`docs/
 - **Analyse et quiz ciblés** : points faibles, dépendance aux indices, contextes problématiques ; modes Standard (pondéré par faiblesse), Non maîtrisées, À renforcer, Mixte (70/30), Par contexte. Chaque quiz peut cibler un dictionnaire : Personnel, Officiel ou tous.
 - **Historique** des sessions avec résultats détaillés.
 
+## Branches & validation des images
+
+- `main` — code en production (image déployée sur le VPS). Pas de commit direct.
+- `develop` — branche de développement courant : tout le travail part d'ici.
+- `test` — couloir de validation des images Docker : merger `develop` dans `test`
+  (puis pousser) déclenche le workflow *test-images-docker*
+  ([`.github/workflows/docker-test.yml`](.github/workflows/docker-test.yml)) :
+  build des deux images (`Dockerfile.db` puis `Dockerfile`) et test fonctionnel du
+  conteneur ([`scripts/docker-smoke.sh`](scripts/docker-smoke.sh) : démarrage,
+  initialisation de la base dans le volume, client statique, lecture/écriture API,
+  validation d'entrée, persistance après redémarrage). Une image ne part en
+  production que si ce job est vert.
+
 ## Architecture
 
 - `server/` — Node + TypeScript + Express. SQLite via **sql.js** (WASM, zéro module natif : aucune chaîne de compilation nécessaire). La base tient en mémoire et est persistée dans un fichier unique à chaque écriture. Validation des réponses exclusivement côté serveur (les traductions attendues ne quittent jamais le serveur avant la réponse).
