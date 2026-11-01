@@ -18,8 +18,12 @@ app.use('/api/sessions', sessionsRouter(db));
 app.use('/api/stats', statsRouter(db));
 
 // Production : un seul processus sert l'API et le build statique du client.
-const webDist = join(here, '..', '..', 'web', 'dist');
-if (existsSync(webDist)) {
+// web/dist est résolu selon la layout : repo (server/src → ../../web/dist) ou
+// image Docker aplatie (/app/src → ../web/dist). WEB_DIST permet de forcer le chemin.
+const webDist = [process.env.WEB_DIST, join(here, '..', '..', 'web', 'dist'), join(here, '..', 'web', 'dist')]
+  .filter((p): p is string => !!p)
+  .find((p) => existsSync(p));
+if (webDist) {
   app.use(express.static(webDist));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();

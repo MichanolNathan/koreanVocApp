@@ -47,9 +47,37 @@ Variables d'environnement : `PORT` (défaut 3001), `DB_PATH` (défaut `server/da
 
 ### Déploiement VPS / cloud
 
-1. Cloner le dépôt, `cd web && npm ci && npm run build`, puis `cd ../server && npm ci`.
-2. `PORT=3001 npm start` (derrière un reverse-proxy HTTPS type Caddy/Nginx, ou via Tailscale).
-3. **Sauvegarde** : copier `server/data/app.db` régulièrement — c'est le seul fichier d'état.
+**Via CI GitLab (recommandé)** — `.gitlab-ci.yml` enchaîne `test:server` → `build-image` (image Docker multi-stage poussée dans le Container Registry) → `deploy:production` (SSH sur le VPS : pull, sauvegarde de la base, `docker compose up -d`). Déploiement automatique à chaque push sur `main`.
+
+Prérequis VPS : Docker + plugin `docker compose`, accès SSH par clé. Variables CI/CD à définir (Settings > CI/CD > Variables, protégées + masquées) :
+
+| Variable | Rôle |
+|---|---|
+| `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PATH` | cible SSH et répertoire (ex. `/opt/myflashcardapp`) |
+| `SSH_PRIVATE_KEY` | clé privée OpenSSH du déploiement (type *File*) |
+| `REGISTRY_TOKEN_USER` / `REGISTRY_TOKEN_PASSWORD` | *deploy token* projet avec `read_registry` (pull depuis le VPS) |
+
+Sur un runner partagé gitlab.com, l'image est construite via Docker-in-Docker (`services: docker:dind`) ; sur un runner auto-hébergé, exposer le socket Docker ou activer dind.
+
+**Manuel (sans CI)** :
+
+```bash
+docker build -t myflashcardapp .
+mkdir -p data && IMAGE=myflashcardapp docker compose up -d
+```
+
+Derrière un reverse-proxy HTTPS (Caddy/Nginx) ou via Tailscale — requis pour la PWA (contexte sécurisé).
+
+**Sauvegarde** : la CI copie `data/app.db` avant chaque déploiement (`data/backup-*.app.db`) ; l'exporter aussi régulièrement hors du VPS — c'est le seul fichier d'état.
+
+### PWA — installation sur téléphone
+
+Le build client produit une PWA complète : manifeste, icônes (dont maskable et apple-touch), et service worker (`web/scripts/sw-template.js`, généré dans `dist/sw.js` par le plugin Vite de `web/vite.config.ts`).
+
+- **Android (Chrome)** : menu ⋮ → *Installer l'application*. **iOS (Safari)** : Partager → *Sur l'écran d'accueil*.
+- Le service worker exige un **contexte sécurisé** : HTTPS en production (reverse proxy Caddy/Nginx ou Tailscale, comme ci-dessus), ou `http://localhost` — sur Android en local, `adb reverse tcp:3001 tcp:3001` permet d'ouvrir `http://localhost:3001` depuis le téléphone. iOS exige HTTPS.
+- **Hors ligne** : la coquille et les assets sont précacheés ; les lectures API (`GET`) renvoient la dernière valeur connue ; les écritures (répondre à un quiz, éditer un mot) nécessitent le réseau.
+- Régénérer les icônes après modification du motif/couleurs : `cd web && node scripts/generate-icons.mjs` (Node pur, aucune dépendance).
 
 ## Données
 

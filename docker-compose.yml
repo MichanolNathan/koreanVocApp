@@ -1,0 +1,14 @@
+# Déploiement production sur le VPS — copié par le job `deploy:production` (.gitlab-ci.yml).
+# La base (SQLite) vit dans ./data sur l'hôte ; sauvegardée avant chaque `up`.
+services:
+  app:
+    image: ${IMAGE:?IMAGE requis — défini par la CI}
+    container_name: myflashcardapp
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      DB_PATH: /app/data/app.db
+    volumes:
+      - ./data:/app/data
