@@ -139,6 +139,16 @@ const SCHEMA = `
     answered_at TEXT NOT NULL DEFAULT (datetime('now')),
     CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
   );
+
+  -- Registre des mots du dictionnaire officiel livrés avec l'application :
+  -- chaque korean inséré par le chargeur y est consigné. Si l'utilisateur
+  -- supprime ensuite le mot, le registre (tombstone) empêche sa réinjection
+  -- au démarrage suivant ; ses éditions ne sont jamais écrasées non plus
+  -- (le chargeur n'insère que des korean jamais livrés ni présents).
+  CREATE TABLE IF NOT EXISTS shipped_words (
+    korean TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 const INDEXES = `
@@ -147,6 +157,8 @@ const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_questions_session ON questions(session_id, position);
   CREATE INDEX IF NOT EXISTS idx_meanings_word ON meanings(word_id);
   CREATE INDEX IF NOT EXISTS idx_phrase_vocab_word ON phrase_vocab(word_id);
+
+
 `;
 
 function scalar(raw: RawDatabase, sql: string): number {
