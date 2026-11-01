@@ -3,7 +3,7 @@
 #   1. la branche test doit contenir le head de la PR (develop mergé dans test) ;
 #   2. le dernier run test-images-docker sur test doit être un succès
 #      (le gate attend la fin du run s'il est encore en cours).
-# Check requis sur main (règles de branche) : « release-gate / gate ».
+# Check requis sur main (protection de branche) : « release-gate » (nom du job).
 name: release-gate
 
 on:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  gate:
+  release-gate:
     runs-on: ubuntu-latest
     steps:
       - name: Vérifier que test contient le code de la PR
