@@ -1,0 +1,19 @@
+# Image « base de données » : base SQLite initiale (schéma + migrations) générée
+# par le code serveur lui-même (openDb), sans artefact .db versionné dans le repo.
+#
+# PRÉ-REQUIS du build de l'image applicative : le Dockerfile principal fait
+# `FROM myflashcardapp/db AS dbseed` puis copie /seed/app.db. Builder d'abord :
+#   docker build -f Dockerfile.db -t myflashcardapp/db .
+
+# --- Étape 1 : initialisation de la base par le code du serveur ---
+FROM node:22-alpine AS init
+WORKDIR /s
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev
+COPY server/ ./
+RUN npx tsx src/make-seed-db.ts /seed/app.db
+
+# --- Étape 2 : image finale minimaliste ne portant que la base ---
+FROM alpine:3.20
+COPY --from=init /seed/app.db /seed/app.db
+CMD ["echo", "Image de données : /seed/app.db (copiée au démarrage de l'app si le volume est vide)"]

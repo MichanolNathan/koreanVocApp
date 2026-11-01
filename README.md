@@ -48,8 +48,11 @@ Variables d'environnement : `PORT` (défaut 3001), `DB_PATH` (défaut `server/da
 ### Déploiement VPS / cloud
 
 ```bash
+# 1. Image de données (pré-requis) : base SQLite initiale générée par le code serveur
+docker build -f Dockerfile.db -t myflashcardapp/db .
+# 2. Image applicative — le build échoue si l'image de données n'existe pas
 docker build -t myflashcardapp .
-mkdir -p data && docker compose up -d   # base SQLite persistée dans ./data
+mkdir -p data && docker compose up -d   # base persistée dans ./data, initialisée depuis /seed au 1er démarrage
 ```
 
 Derrière un reverse-proxy HTTPS (Caddy/Nginx) ou via Tailscale — requis pour la PWA (contexte sécurisé).
