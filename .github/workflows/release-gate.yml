@@ -31,9 +31,9 @@ jobs:
           echo "OK : test contient ${pr_head:0:7}"
 
       - name: Vérifier que la CI de test est verte
-        timeout-minutes: 20
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           last="$(gh run list --workflow docker-test.yml --branch test --limit 1 --json databaseId,status,conclusion)"
           echo "Dernier run sur test : $last"
