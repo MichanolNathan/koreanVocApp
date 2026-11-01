@@ -1,15 +1,17 @@
 import { Router } from 'express';
 import type { DB } from '../db.ts';
-import { answerQuestion, createSession, getHint, getResults, getSessionView, listSessions } from '../repo.ts';
-import { checkAnswer } from '../engine.ts';
-import type { QuizMode } from '../engine.ts';
+import { ConflictError, answerQuestion, createSession, getHint, getResults, getSessionView, listSessions } from '../repo.ts';
+import { checkAnswer, checkPhraseAnswer } from '../engine.ts';
+import type { QuizMode, SessionKind } from '../engine.ts';
 
 /**
- * API sessions de quiz (PRD §4, §6). Les traductions attendues ne sont
- * jamais exposées avant la réponse : validation côté serveur uniquement.
+ * API sessions de quiz (PRD §4, §6 + itération 2 §2) : quiz de vocabulaire,
+ * quiz de phrases et quiz mixtes. Les traductions attendues ne sont jamais
+ * exposées avant la réponse : validation côté serveur uniquement.
  */
 
 const MODES: QuizMode[] = ['standard', 'weak', 'reinforce', 'mixed', 'context'];
+const KINDS: SessionKind[] = ['vocab', 'phrases', 'mixed'];
 
 export function sessionsRouter(db: DB): Router {
   const router = Router();
@@ -20,15 +22,23 @@ export function sessionsRouter(db: DB): Router {
     if (typeof mode !== 'string' || !MODES.includes(mode as QuizMode)) {
       return res.status(400).json({ error: `Mode invalide. Modes : ${MODES.join(', ')}.` });
     }
+    const kind = body.kind ?? 'vocab';
+    if (typeof kind !== 'string' || !KINDS.includes(kind as SessionKind)) {
+      return res.status(400).json({ error: `kind invalide. Valeurs : ${KINDS.join(', ')}.` });
+    }
     const context = typeof body.context === 'string' && body.context.trim().length > 0 ? body.context.trim() : null;
     if (mode === 'context' && !context) return res.status(400).json({ error: 'Mode « context » : précisez un contexte.' });
     if (body.source !== undefined && body.source !== 'personal' && body.source !== 'official') {
       return res.status(400).json({ error: 'source doit valoir « personal » ou « official ».' });
     }
     const source = body.source === 'personal' || body.source === 'official' ? body.source : undefined;
-    const session = createSession(db, mode as QuizMode, context, source);
-    if (!session) return res.status(409).json({ error: 'Aucune signification disponible — ajoutez des mots au dictionnaire.' });
-    res.status(201).json(session);
+    try {
+      const session = createSession(db, mode as QuizMode, context, source, kind as SessionKind);
+      res.status(201).json(session);
+    } catch (err) {
+      if (err instanceof ConflictError) return res.status(409).json({ error: err.message });
+      throw err;
+    }
   });
 
   router.get('/', (_req, res) => {
@@ -51,7 +61,7 @@ export function sessionsRouter(db: DB): Router {
     const answer = (req.body ?? {}) as Record<string, unknown>;
     if (typeof answer.answer !== 'string') return res.status(400).json({ error: 'Champ « answer » (chaîne) requis.' });
     try {
-      const outcome = answerQuestion(db, Number(req.params.id), Number(req.params.qid), answer.answer, checkAnswer);
+      const outcome = answerQuestion(db, Number(req.params.id), Number(req.params.qid), answer.answer, checkAnswer, checkPhraseAnswer);
       if (outcome === null) return res.status(404).json({ error: 'Question introuvable.' });
       if (outcome === undefined) return res.status(409).json({ error: 'Question déjà répondue.' });
       res.json(outcome);

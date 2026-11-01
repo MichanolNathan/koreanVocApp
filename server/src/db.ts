@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import initSqlJs from 'sql.js';
 
@@ -60,16 +60,46 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Autres traductions acceptées pour une signification (PRD §2.1)
+  -- Autres traductions acceptées pour une signification (PRD v0.2 §2.1)
   CREATE TABLE IF NOT EXISTS meaning_translations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE,
     text TEXT NOT NULL
   );
 
+  -- Bibliothèque de phrases intégrée (itération 2, PRD §4) : identifiants
+  -- stables fournis par la bibliothèque, jamais auto-générés.
+  CREATE TABLE IF NOT EXISTS phrases (
+    id INTEGER PRIMARY KEY,
+    korean TEXT NOT NULL UNIQUE,
+    translation TEXT NOT NULL,
+    romanization TEXT,
+    difficulty TEXT NOT NULL DEFAULT 'beginner',
+    hint TEXT,
+    theme TEXT,
+    grammar_point TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Traductions alternatives acceptées pour une phrase (itération 2 §4.3, §5.2)
+  CREATE TABLE IF NOT EXISTS phrase_translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phrase_id INTEGER NOT NULL REFERENCES phrases(id) ON DELETE CASCADE,
+    text TEXT NOT NULL
+  );
+
+  -- Liens phrase ↔ mots du dictionnaire (itération 2 §4.4) : lecture et
+  -- analyse uniquement — jamais utilisés pour modifier la maîtrise des mots.
+  CREATE TABLE IF NOT EXISTS phrase_vocab (
+    phrase_id INTEGER NOT NULL REFERENCES phrases(id) ON DELETE CASCADE,
+    word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+    PRIMARY KEY (phrase_id, word_id)
+  );
+
   CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     exercise_type TEXT NOT NULL DEFAULT 'translation',
+    kind TEXT NOT NULL DEFAULT 'vocab',
     mode TEXT NOT NULL,
     context_filter TEXT,
     source_filter TEXT,
@@ -77,10 +107,14 @@ const SCHEMA = `
     finished_at TEXT
   );
 
+  -- kind : cible de la question — 'meaning' (mot/signification) ou
+  -- 'phrase' (bibliothèque de phrases, itération 2).
   CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+    meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+    phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
     hint_used INTEGER NOT NULL DEFAULT 0,
     answered INTEGER NOT NULL DEFAULT 0,
@@ -88,23 +122,31 @@ const SCHEMA = `
     correct INTEGER,
     expected_translation TEXT NOT NULL,
     matched_meaning_id INTEGER,
-    answered_at TEXT
+    answered_at TEXT,
+    CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
   );
 
   -- Journal des tentatives : source unique du calcul de maîtrise (PRD §6.1)
   CREATE TABLE IF NOT EXISTS attempt_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+    meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+    phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
     session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
     user_answer TEXT,
     correct INTEGER NOT NULL,
     hint_used INTEGER NOT NULL,
-    answered_at TEXT NOT NULL DEFAULT (datetime('now'))
+    answered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
   );
+`;
 
+const INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_attempts_meaning ON attempt_log(meaning_id, id);
+  CREATE INDEX IF NOT EXISTS idx_attempts_phrase ON attempt_log(phrase_id, id);
   CREATE INDEX IF NOT EXISTS idx_questions_session ON questions(session_id, position);
   CREATE INDEX IF NOT EXISTS idx_meanings_word ON meanings(word_id);
+  CREATE INDEX IF NOT EXISTS idx_phrase_vocab_word ON phrase_vocab(word_id);
 `;
 
 function scalar(raw: RawDatabase, sql: string): number {
@@ -113,18 +155,87 @@ function scalar(raw: RawDatabase, sql: string): number {
   return Number(row?.[0] ?? 0);
 }
 
+/** Colonnes d'une table — détection des migrations via PRAGMA table_info. */
+function tableColumns(raw: RawDatabase, table: string): Set<string> {
+  const res = raw.exec(`PRAGMA table_info(${table})`) as unknown as { columns: string[]; values: unknown[][] }[];
+  const nameIdx = res[0]?.columns.indexOf('name') ?? -1;
+  return new Set((res[0]?.values ?? []).map((row) => String(row[nameIdx])));
+}
+
+/** Sauvegarde horodatée du fichier base, avant toute migration destructrice. */
+function backupDbFile(path: string): string {
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  let target = `${path}.backup-${stamp}`;
+  let n = 2;
+  while (existsSync(target)) target = `${path}.backup-${stamp}-${n++}`;
+  copyFileSync(path, target);
+  return target;
+}
+
+/**
+ * Migration v0.3 (itération 2) : généralisation des cibles de questions et de
+ * tentatives (mots ET phrases). SQLite ne peut ni relâcher un NOT NULL ni
+ * modifier une contrainte par ALTER : questions et attempt_log sont
+ * reconstruites à l'identique (les lignes existantes deviennent kind
+ * 'meaning'). Le fichier base est sauvegardé avant reconstruction.
+ */
+function migrate(raw: RawDatabase, path: string): void {
+  const sessionCols = tableColumns(raw, 'sessions');
+  if (!sessionCols.has('source_filter')) raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
+  if (!sessionCols.has('kind')) raw.exec("ALTER TABLE sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'vocab'");
+
+  if (tableColumns(raw, 'questions').has('kind') && tableColumns(raw, 'attempt_log').has('kind')) return;
+  if (path !== ':memory:') {
+    console.warn(`Sauvegarde de la base avant migration : ${backupDbFile(path)}`);
+  }
+  raw.exec(`
+    CREATE TABLE questions_v03 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+      meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+      phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      hint_used INTEGER NOT NULL DEFAULT 0,
+      answered INTEGER NOT NULL DEFAULT 0,
+      user_answer TEXT,
+      correct INTEGER,
+      expected_translation TEXT NOT NULL,
+      matched_meaning_id INTEGER,
+      answered_at TEXT,
+      CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
+    );
+    INSERT INTO questions_v03 (id, session_id, kind, meaning_id, phrase_id, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at)
+      SELECT id, session_id, 'meaning', meaning_id, NULL, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at FROM questions;
+    DROP TABLE questions;
+    ALTER TABLE questions_v03 RENAME TO questions;
+
+    CREATE TABLE attempt_log_v03 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+      meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+      phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
+      session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+      user_answer TEXT,
+      correct INTEGER NOT NULL,
+      hint_used INTEGER NOT NULL,
+      answered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
+    );
+    INSERT INTO attempt_log_v03 (id, kind, meaning_id, phrase_id, session_id, user_answer, correct, hint_used, answered_at)
+      SELECT id, 'meaning', meaning_id, NULL, session_id, user_answer, correct, hint_used, answered_at FROM attempt_log;
+    DROP TABLE attempt_log;
+    ALTER TABLE attempt_log_v03 RENAME TO attempt_log;
+  `);
+}
+
 export async function openDb(path: string): Promise<DB> {
   const SQL = await initSqlJs();
   const raw = new SQL.Database(path !== ':memory:' && existsSync(path) ? readFileSync(path) : undefined) as unknown as RawDatabase;
   raw.exec('PRAGMA foreign_keys = ON;');
   raw.exec(SCHEMA);
-  // Bases créées avant la v0.2.1 : ajout de sessions.source_filter
-  const pragma = raw.exec('PRAGMA table_info(sessions)') as unknown as { columns: string[]; values: unknown[][] }[];
-  const nameIdx = pragma[0]?.columns.indexOf('name') ?? -1;
-  const tableCols = new Set((pragma[0]?.values ?? []).map((row) => String(row[nameIdx])));
-  if (!tableCols.has('source_filter')) {
-    raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
-  }
+  migrate(raw, path);
+  raw.exec(INDEXES);
 
   const persist = (): void => {
     if (path === ':memory:') return;

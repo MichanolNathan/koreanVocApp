@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # Test fonctionnel d'une image Docker applicative déjà construite — utilisé par
 # la branche `test` (workflow .github/workflows/docker-test.yml — voir README).
-#
-# Vérifie, dans un conteneur jetable avec son volume :
-#   1. démarrage du service et santé (/api/stats) ;
-#   2. initialisation de la base SQLite dans le volume par l'entrypoint ;
-#   3. service du client statique à la racine ;
 #   4. lecture API (GET /api/words) ;
 #   5. écriture API (POST + GET + DELETE /api/words/:id) ;
+#   5b. quiz de phrases de la bibliothèque intégrée (itération 2) : session
+#       de 15 questions, indice, réponse évaluée côté serveur ;
 #   6. validation d'entrée (POST invalide -> 400) ;
 #   7. persistance des données après redémarrage du conteneur (la base du
 #      volume ne doit pas être écrasée par le seed).
@@ -63,17 +60,42 @@ pass "client statique servi à /"
 curl -fsS "$base/api/words" | grep -q '^\[' || fail "GET /api/words ne renvoie pas une liste JSON"
 pass "GET /api/words -> liste JSON"
 
-# 5. Écriture API : POST puis relecture du mot créé
-created="$(curl -fsS -X POST "$base/api/words" -H 'Content-Type: application/json' \
-  -d '{"korean":"테스트","romanization":"teseuteu","category":"noun","meanings":[{"translation":"test"}]}')"
+# 5. Écriture API : POST puis relecture du mot créé.
+#    Le corps passe par un fichier (--data-binary @) : certains curl Windows
+#    mutilent l'UTF-8 passé en argument ; les octets d'un fichier restent exacts.
+payload="smoke-payload.$$"
+cat >"$payload" <<'EOF'
+{"korean":"테스트","romanization":"teseuteu","meanings":[{"translation":"test"}]}
+EOF
+created="$(curl -fsS -X POST "$base/api/words" -H 'Content-Type: application/json' --data-binary @"$payload")"
+rm -f "$payload"
 id="$(printf '%s' "$created" | grep -o '"id":[0-9]\+' | head -1 | cut -d: -f2)"
 [ -n "$id" ] || fail "POST /api/words n'a pas renvoyé d'id : $created"
 curl -fsS "$base/api/words/$id" | grep -q '테스트' || fail "GET /api/words/$id ne contient pas le mot créé"
 pass "POST + GET /api/words/$id -> mot créé relu"
 
+# 5b. Quiz de phrases (itération 2) : bibliothèque locale, 15 questions,
+#     aucune traduction attendue exposée avant la réponse.
+session="$(curl -fsS -X POST "$base/api/sessions" -H 'Content-Type: application/json' -d '{"kind":"phrases","mode":"standard"}')"
+nq="$(printf '%s' "$session" | grep -o '"kind":"phrase"' | wc -l | tr -d ' ')"
+[ "$nq" = "15" ] || fail "quiz de phrases : $nq questions phrase, 15 attendues"
+if printf '%s' "$session" | grep -q 'expected'; then fail "quiz de phrases : traduction attendue exposée dans la session"; fi
+qid="$(printf '%s' "$session" | grep -o '"questions":\[{"id":[0-9]\+' | grep -o '[0-9]\+$')"
+[ -n "$qid" ] || fail "quiz de phrases : id de question introuvable"
+sid="$(printf '%s' "$session" | grep -o '^{"id":[0-9]\+' | grep -o '[0-9]\+$')"
+curl -fsS -X POST "$base/api/sessions/$sid/questions/$qid/hint" | grep -q '"hint"' || fail "quiz de phrases : indice absent"
+answer_payload="smoke-answer.$$"
+printf '%s' '{"answer":"réponse volontairement fausse"}' >"$answer_payload"
+curl -fsS -X POST "$base/api/sessions/$sid/questions/$qid/answer" -H 'Content-Type: application/json' \
+  --data-binary @"$answer_payload" | grep -q '"kind":"phrase"' || fail "quiz de phrases : réponse non évaluée"
+rm -f "$answer_payload"
+pass "quiz de phrases : 15 questions, indice, réponse évaluée (serveur)"
+
 # 6. Validation d'entrée : mot vide -> 400
-code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/words" \
-  -H 'Content-Type: application/json' -d '{"korean":"","meanings":[]}')"
+# -w %{http_code} en fin de sortie : les 3 derniers caractères sont le code
+# (portable — pas de /dev/null, que certains curl Windows ne savent pas ouvrir).
+code="$(curl -s -w '%{http_code}' -X POST "$base/api/words" \
+  -H 'Content-Type: application/json' -d '{"korean":"","meanings":[]}' | tail -c 3)"
 [ "$code" = "400" ] || fail "POST invalide -> HTTP $code, 400 attendu"
 pass "validation d'entrée (400 sur corps invalide)"
 
@@ -85,7 +107,7 @@ wait_up
 curl -fsS "$base/api/words/$id" | grep -q '테스트' || fail "le mot créé a disparu après redémarrage du conteneur"
 pass "données persistées après redémarrage"
 
-code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$base/api/words/$id")"
+code="$(curl -s -w '%{http_code}' -X DELETE "$base/api/words/$id" | tail -c 3)"
 [ "$code" = "204" ] || fail "DELETE /api/words/$id -> HTTP $code, 204 attendu"
 pass "DELETE /api/words/$id -> 204"
 

@@ -1,18 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { SOURCE_LABELS, api } from './api';
-import type { AnswerFeedback, SessionCreated, SessionQuestion, SessionResults, WordSource } from './api';
+import { KIND_LABELS, SOURCE_LABELS, api } from './api';
+import type { AnswerFeedback, SessionCreated, SessionKind, SessionQuestion, SessionResults, WordSource } from './api';
 
 type Phase =
   | { step: 'setup' }
   | { step: 'run'; session: SessionCreated; index: number; feedback: AnswerFeedback | null; hint: string | null }
   | { step: 'results'; sessionId: number };
 
+const KINDS: Array<{ value: SessionKind; label: string; description: string }> = [
+  { value: 'vocab', label: 'Vocabulaire', description: 'Mots du dictionnaire (comme avant)' },
+  { value: 'phrases', label: 'Phrases', description: 'Phrases coréennes débutant à traduire' },
+  { value: 'mixed', label: 'Mixte', description: '8 questions de vocabulaire + 7 phrases, mélangées' },
+];
+
 const MODES: Array<{ value: string; label: string; description: string }> = [
   { value: 'standard', label: 'Standard', description: 'Pondéré par tes faiblesses (recommandé)' },
   { value: 'weak', label: 'Non maîtrisées', description: 'Concentre-toi sur ce qui est raté' },
-  { value: 'reinforce', label: 'À renforcer', description: 'Les significations fragiles' },
-  { value: 'mixed', label: 'Mixte', description: '70 % difficultés + 30 % acquis' },
-  { value: 'context', label: 'Par contexte', description: 'Un contexte précis' },
+  { value: 'reinforce', label: 'À renforcer', description: 'Les questions fragiles' },
+  { value: 'mixed', label: 'Priorité faibles', description: '70 % difficultés + 30 % acquis' },
+  { value: 'context', label: 'Par contexte', description: 'Un contexte ou thème précis' },
 ];
 
 export function Quiz(): JSX.Element {
@@ -50,8 +56,10 @@ export function Quiz(): JSX.Element {
 
 function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element {
   const { onStart } = props;
+  const [kind, setKind] = useState<SessionKind>('vocab');
   const [mode, setMode] = useState('standard');
   const [contexts, setContexts] = useState<string[]>([]);
+  const [themes, setThemes] = useState<string[]>([]);
   const [context, setContext] = useState('');
   const [source, setSource] = useState<'all' | WordSource>('all');
   const [error, setError] = useState<string | null>(null);
@@ -60,21 +68,37 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
   useEffect(() => {
     api
       .stats()
-      .then((s) => setContexts(s.contexts))
-      .catch(() => setContexts([]));
+      .then((s) => {
+        setContexts(s.contexts);
+        setThemes(s.phrases.themes);
+      })
+      .catch(() => {
+        setContexts([]);
+        setThemes([]);
+      });
   }, []);
+
+  const changeKind = (k: SessionKind): void => {
+    setKind(k);
+    if (k === 'mixed' && mode === 'context') setMode('standard'); // pas de filtre contexte en mixte
+  };
 
   const start = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      onStart(await api.createSession(mode, mode === 'context' ? context : undefined, source === 'all' ? undefined : source));
+      onStart(
+        await api.createSession(kind, mode, mode === 'context' ? context : undefined, source === 'all' ? undefined : source)
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
     } finally {
       setBusy(false);
     }
   };
+
+  const availableModes = MODES.filter((m) => m.value !== 'context' || kind !== 'mixed');
+  const contextOptions = kind === 'phrases' ? themes : contexts;
 
   return (
     <section className="card">
@@ -87,8 +111,25 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
         }}
       >
         <fieldset>
-          <legend>Type de quiz</legend>
-          {MODES.map((m) => (
+          <legend>Type de questions</legend>
+          {KINDS.map((k) => (
+            <label key={k.value} className="radio-line">
+              <input
+                type="radio"
+                name="kind"
+                value={k.value}
+                checked={kind === k.value}
+                onChange={() => changeKind(k.value)}
+              />
+              <span>
+                <strong>{k.label}</strong> — {k.description}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset>
+          <legend>Mode de sélection</legend>
+          {availableModes.map((m) => (
             <label key={m.value} className="radio-line">
               <input
                 type="radio"
@@ -105,10 +146,10 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
         </fieldset>
         {mode === 'context' && (
           <label>
-            Contexte
+            {kind === 'phrases' ? 'Thème' : 'Contexte'}
             <select value={context} onChange={(e) => setContext(e.target.value)} required>
-              <option value="">Choisir un contexte…</option>
-              {contexts.map((c) => (
+              <option value="">{kind === 'phrases' ? 'Choisir un thème…' : 'Choisir un contexte…'}</option>
+              {contextOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -116,14 +157,16 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
             </select>
           </label>
         )}
-        <label>
-          Dictionnaire
-          <select value={source} onChange={(e) => setSource(e.target.value as 'all' | WordSource)}>
-            <option value="all">Tous les dictionnaires</option>
-            <option value="personal">{SOURCE_LABELS.personal}</option>
-            <option value="official">{SOURCE_LABELS.official}</option>
-          </select>
-        </label>
+        {kind !== 'phrases' && (
+          <label>
+            Dictionnaire {kind === 'mixed' && <span className="word-meta">(partie vocabulaire)</span>}
+            <select value={source} onChange={(e) => setSource(e.target.value as 'all' | WordSource)}>
+              <option value="all">Tous les dictionnaires</option>
+              <option value="personal">{SOURCE_LABELS.personal}</option>
+              <option value="official">{SOURCE_LABELS.official}</option>
+            </select>
+          </label>
+        )}
         {error && (
           <p className="status status-error" role="alert">
             {error}
@@ -148,10 +191,11 @@ function QuizRunner(props: {
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [index]);
+    (question?.kind === 'phrase' ? areaRef.current : inputRef.current)?.focus();
+  }, [index, question]);
 
   if (!question) return <p className="empty">Session terminée.</p>;
 
@@ -189,12 +233,14 @@ function QuizRunner(props: {
     }
   };
 
+  const isPhrase = question.kind === 'phrase';
+
   return (
     <section className="card quiz-card" aria-label={`Question ${index + 1} sur ${session.questions.length}`}>
       <p className="quiz-progress" aria-live="polite">
-        Question {index + 1} / {session.questions.length}
+        Question {index + 1} / {session.questions.length} · {isPhrase ? 'Phrase' : 'Mot'}
       </p>
-      <p className="quiz-word" lang="ko">
+      <p className={isPhrase ? 'quiz-sentence' : 'quiz-word'} lang="ko">
         {question.korean}
       </p>
       <p className="word-meta">
@@ -212,13 +258,24 @@ function QuizRunner(props: {
         >
           <label>
             Traduction en français
-            <input
-              ref={inputRef}
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              autoComplete="off"
-              lang="fr"
-            />
+            {isPhrase ? (
+              <textarea
+                ref={areaRef}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                rows={2}
+                autoComplete="off"
+                lang="fr"
+              />
+            ) : (
+              <input
+                ref={inputRef}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                autoComplete="off"
+                lang="fr"
+              />
+            )}
           </label>
           <div className="form-actions">
             <button type="submit" className="primary" disabled={busy || answer.trim().length === 0}>
@@ -242,9 +299,11 @@ function QuizRunner(props: {
         <div className="feedback" aria-live="polite">
           <p className={`status ${feedback.correct ? 'status-ok' : 'status-error'}`}>
             {feedback.correct ? `Correct — ${feedback.expected}` : `Incorrect. Attendu : ${feedback.expected}`}
-            {feedback.matchedMeaningId !== null && feedback.matchedMeaningId !== feedback.targetMeaning.id && ' (autre sens du mot accepté)'}
           </p>
-          {feedback.otherMeanings.length > 0 && (
+          {feedback.kind === 'meaning' && feedback.matchedMeaningId !== null && feedback.matchedMeaningId !== feedback.targetMeaning.id && (
+            <p className="word-meta">(autre sens du mot accepté)</p>
+          )}
+          {feedback.kind === 'meaning' && feedback.otherMeanings.length > 0 && (
             <div>
               <p className="word-meta">Autres sens du mot :</p>
               <ul className="meanings">
@@ -258,6 +317,9 @@ function QuizRunner(props: {
               </ul>
             </div>
           )}
+          {feedback.kind === 'phrase' && feedback.acceptedTranslations.length > 0 && (
+            <p className="word-meta">Autres traductions acceptées : {feedback.acceptedTranslations.join(' · ')}</p>
+          )}
           <button type="button" className="primary" onClick={next} autoFocus>
             {index + 1 >= session.questions.length ? 'Voir les résultats' : 'Question suivante'}
           </button>
@@ -269,6 +331,7 @@ function QuizRunner(props: {
 
 function ResultsView(props: { results: SessionResults; onRestart: () => void }): JSX.Element {
   const { results, onRestart } = props;
+  const hasBoth = results.byCategory.vocab.total > 0 && results.byCategory.phrases.total > 0;
   return (
     <>
       <section className="card">
@@ -279,6 +342,12 @@ function ResultsView(props: { results: SessionResults; onRestart: () => void }):
           <li>{results.hintsUsed} indice{results.hintsUsed > 1 ? 's' : ''} utilisé{results.hintsUsed > 1 ? 's' : ''}</li>
           <li>{results.correctWithoutHint} bonne{results.correctWithoutHint > 1 ? 's' : ''} réponse{results.correctWithoutHint > 1 ? 's' : ''} sans indice</li>
         </ul>
+        {hasBoth && (
+          <ul className="result-stats">
+            <li>Vocabulaire : {results.byCategory.vocab.correct} / {results.byCategory.vocab.total}</li>
+            <li>Phrases : {results.byCategory.phrases.correct} / {results.byCategory.phrases.total}</li>
+          </ul>
+        )}
         <button type="button" className="primary" onClick={onRestart}>
           Nouveau quiz
         </button>
@@ -288,10 +357,14 @@ function ResultsView(props: { results: SessionResults; onRestart: () => void }):
         <ol className="result-list">
           {results.questions.map((q) => (
             <li key={q.id} className={q.correct ? 'result-ok' : 'result-ko'}>
+              <span className="word-meta">{q.kind === 'phrase' ? 'Phrase' : 'Mot'} · </span>
               <span lang="ko">{q.korean}</span> — ta réponse : « {q.user_answer} » · attendu : « {q.expected} »
               {q.hint_used && ' · avec indice'}
-              {!q.correct && q.otherMeanings.length > 0 && (
+              {!q.correct && q.kind === 'vocab' && q.otherMeanings.length > 0 && (
                 <span className="word-meta"> · autres sens : {q.otherMeanings.map((m) => m.translation).join(', ')}</span>
+              )}
+              {q.kind === 'phrase' && q.acceptedTranslations.length > 0 && (
+                <span className="word-meta"> · aussi accepté : {q.acceptedTranslations.join(', ')}</span>
               )}
             </li>
           ))}

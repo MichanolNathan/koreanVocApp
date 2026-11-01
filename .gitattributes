@@ -1,0 +1,3 @@
+# Les scripts shell doivent rester en LF : ils sont copiés tels quels dans les
+# images Docker (CRLF casserait le shebang de l'entrypoint) et joués par bash.
+*.sh text eol=lf

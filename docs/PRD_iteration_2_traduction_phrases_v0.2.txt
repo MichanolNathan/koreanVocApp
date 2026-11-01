@@ -1,0 +1,311 @@
+PRD — Application de révision du vocabulaire coréen
+Itération 2 : traduction de phrases
+Version : 0.2
+Date : 1er novembre 2026
+
+1. CONTEXTE ET OBJECTIFS
+
+La première version de l'application permet de constituer un dictionnaire
+personnel coréen-français et de réviser les mots au moyen de quiz de
+traduction. Cette deuxième itération ajoute un type de question consacré
+à la traduction de phrases coréennes vers le français.
+
+L'évolution doit s'intégrer à l'existant sans remettre en cause le quiz
+de vocabulaire. L'application doit rester simple, modulaire et évolutive.
+
+Objectifs :
+- Ajouter des questions de traduction de phrases coréennes vers le français.
+- Limiter les phrases au niveau débutant pour cette itération.
+- Fournir une bibliothèque de phrases préchargée avec l'application.
+- Proposer des quiz de vocabulaire, de phrases et mixtes.
+- Réutiliser le moteur de quiz, les indices, l'historique et les résultats
+  existants lorsque cela est pertinent.
+- Suivre la maîtrise des phrases indépendamment de celle des mots.
+
+2. MODES DE QUIZ
+
+L'utilisateur dispose de trois modes :
+
+2.1 Quiz de vocabulaire
+Le fonctionnement de la première version est conservé : questions portant
+uniquement sur des mots coréens à traduire en français.
+
+2.2 Quiz de phrases
+Les questions portent uniquement sur des phrases coréennes à traduire
+en français. Elles proviennent de la bibliothèque intégrée à l'application.
+
+2.3 Quiz mixte
+Le quiz combine vocabulaire et phrases dans une même session :
+- 15 questions au total ;
+- 8 questions de vocabulaire ;
+- 7 questions de traduction de phrases ;
+- ordre des questions mélangé.
+
+2.4 Déroulement
+- Une session comporte 15 questions.
+- Les questions sont présentées une par une.
+- L'utilisateur saisit librement sa réponse en français.
+- Il peut demander un indice explicitement ; aucun indice n'est affiché
+  automatiquement.
+- Les résultats détaillés sont présentés à la fin de la session.
+- Le quiz de vocabulaire conserve son comportement actuel.
+
+3. NIVEAU ET CONTENU DES PHRASES
+
+La bibliothèque de cette itération est limitée au niveau débutant,
+avec une difficulté inspirée du niveau A1. Il s'agit d'un repère pratique
+de difficulté et non d'une certification officielle, sauf garantie de
+la bibliothèque source.
+
+Aucun contenu intermédiaire ou avancé n'est proposé dans cette itération.
+
+Critères de sélection :
+- phrases courtes et simples ;
+- vocabulaire courant et concret ;
+- structures grammaticales élémentaires ;
+- formes verbales usuelles ;
+- une construction principale facilement identifiable ;
+- situations de communication quotidiennes.
+
+Thèmes possibles :
+- salutations et présentations ;
+- famille et entourage ;
+- nourriture et boissons ;
+- achats ;
+- déplacements et transports ;
+- horaires et dates ;
+- activités quotidiennes.
+
+Chaque phrase doit être accompagnée d'une traduction française fiable,
+et le contenu doit être relu pour correspondre au niveau débutant.
+
+Exemple illustratif :
+Coréen : 저는 사과를 먹어요.
+Français : Je mange une pomme.
+
+4. BIBLIOTHÈQUE DE PHRASES
+
+4.1 Source et disponibilité
+- Les phrases sont fournies directement avec l'application.
+- La bibliothèque est intégrée localement et disponible dès l'installation.
+- Aucun accès à Internet n'est nécessaire pour récupérer les phrases
+  pendant un quiz.
+- La bibliothèque initiale est livrée avec l'application et pourra être
+  enrichie ultérieurement par des mises à jour de l'application.
+
+4.2 Gestion par l'utilisateur
+L'utilisateur n'a pas besoin de créer ses propres phrases.
+Aucune interface de création, de modification ou de suppression manuelle
+de phrases n'est prévue. Aucun mécanisme d'import JSON, CSV ou autre
+format n'est prévu dans cette itération.
+
+4.3 Données associées à une phrase
+La structure de données doit pouvoir contenir :
+- identifiant stable ;
+- phrase en coréen (obligatoire) ;
+- traduction française principale (obligatoire) ;
+- autres traductions acceptées, si disponibles ;
+- romanisation, si disponible ;
+- niveau de difficulté ;
+- indice éventuel ;
+- thème ou contexte, si disponible ;
+- point grammatical associé, si disponible ;
+- vocabulaire associé, si disponible.
+
+Les champs facultatifs ne doivent pas empêcher l'utilisation d'une phrase.
+
+4.4 Liens avec le vocabulaire existant
+Lorsque cela est possible, une phrase peut être liée aux entrées du
+dictionnaire existant. Ces liens peuvent aider à retrouver le vocabulaire
+présent dans une phrase et à analyser certaines difficultés.
+
+Une erreur sur une phrase ne doit toutefois pas dégrader automatiquement
+la maîtrise de tous les mots qu'elle contient : elle ne prouve pas que
+chacun de ces mots est inconnu.
+
+5. SAISIE ET ÉVALUATION DES RÉPONSES
+
+5.1 Saisie
+- Afficher la phrase coréenne.
+- Permettre la saisie libre d'une traduction française.
+- Ne pas afficher la traduction attendue avant la validation.
+
+5.2 Variantes
+L'évaluation ne doit pas reposer uniquement sur une comparaison stricte
+des chaînes de caractères. Elle doit pouvoir prendre en compte, lorsque
+les données le permettent :
+- les traductions alternatives répertoriées ;
+- les différences mineures de formulation ;
+- les variantes grammaticales françaises conservant le sens ;
+- les différences typographiques ou de ponctuation sans incidence
+  sur le sens.
+
+La bibliothèque doit permettre d'associer plusieurs traductions acceptées
+à une même phrase. La stratégie technique précise d'évaluation reste
+à définir. Ne pas promettre une compréhension sémantique parfaite si
+le mécanisme retenu ne la garantit pas.
+
+5.3 Indices
+- L'utilisateur peut demander un indice pendant la question.
+- L'indice n'est jamais affiché automatiquement.
+- L'utilisation d'un indice est enregistrée.
+- Une réponse correcte après utilisation d'un indice reste correcte.
+- L'utilisation de l'indice apparaît dans les résultats.
+
+6. RÉSULTATS ET HISTORIQUE
+
+À la fin d'une session, afficher notamment :
+- nombre de réponses correctes sur 15 ;
+- pourcentage de réussite ;
+- nombre de réponses incorrectes ;
+- nombre d'indices utilisés ;
+- nombre de réponses correctes sans indice ;
+- détail des questions et des réponses.
+
+Pour chaque question de phrase, le détail doit permettre de consulter :
+- phrase coréenne ;
+- réponse saisie ;
+- traduction attendue ;
+- statut de la réponse ;
+- utilisation éventuelle d'un indice ;
+- autres traductions acceptées, lorsqu'elles existent.
+
+Les résultats des quiz de phrases sont conservés dans l'historique.
+Dans un quiz mixte, les performances en vocabulaire et en phrases
+doivent être distinguées, en plus du résultat global.
+
+7. SUIVI DE LA MAÎTRISE
+
+7.1 Maîtrise des phrases
+Chaque phrase possède son propre historique de révision et son niveau
+de maîtrise. Les niveaux existants sont :
+- Maîtrisé ;
+- À renforcer ;
+- Non maîtrisé.
+
+Le calcul doit tenir compte de plusieurs tentatives, des réponses
+correctes et incorrectes, de l'utilisation des indices et de la récence
+des résultats. Une seule erreur ne doit pas entraîner automatiquement
+une dégradation du niveau. Les seuils et pondérations précis restent
+à définir en cohérence avec le mécanisme existant.
+
+7.2 Indépendance du vocabulaire
+La progression des phrases est suivie indépendamment de celle des mots.
+Connaître un mot ne signifie pas nécessairement maîtriser son emploi
+dans une phrase. Inversement, une erreur sur une phrase ne doit pas
+modifier automatiquement la maîtrise de tous les mots qu'elle contient.
+
+Les liens entre phrases et vocabulaire peuvent aider à analyser les
+difficultés, sans fausser les statistiques individuelles des mots.
+
+7.3 Exploitation de l'historique
+L'historique doit permettre d'identifier les phrases souvent échouées
+ou nécessitant fréquemment un indice. Ces données pourront alimenter
+des quiz ciblés sur les phrases à renforcer ou non maîtrisées.
+
+8. ARCHITECTURE ET INTÉGRATION
+
+Conserver une séparation claire entre :
+- sources de questions ;
+- bibliothèque locale de phrases ;
+- moteur de quiz ;
+- types de questions/exercices ;
+- évaluation des réponses ;
+- historique et suivi de progression.
+
+Ajouter un type d'exercice dédié, par exemple SentenceTranslation
+(traduction de phrase). Le moteur doit pouvoir utiliser différentes
+sources et différents types de questions sans dépendre directement
+de leur mode de stockage.
+
+Le moteur existant doit rester réutilisable pour les quiz de vocabulaire,
+les quiz de phrases et les quiz mixtes. L'ajout de la bibliothèque ne doit
+pas imposer une réécriture du quiz de vocabulaire.
+
+9. EXIGENCES NON FONCTIONNELLES
+
+- Simplicité d'utilisation et limitation de la complexité fonctionnelle.
+- Architecture modulaire et maintenable.
+- Prise en charge correcte du Hangul, des accents et caractères français.
+- Fonctionnement des quiz de phrases sans connexion Internet.
+- Persistance fiable des résultats et de l'historique.
+- Résultats cohérents et reproductibles.
+- Interface accessible au clavier et compatible avec les lecteurs d'écran,
+  notamment pour les phrases, la saisie, les indices, les validations
+  et les résultats.
+
+10. PÉRIMÈTRE DE L'ITÉRATION 2
+
+Inclus :
+- bibliothèque locale de phrases débutantes livrée avec l'application ;
+- traduction coréen vers français ;
+- quiz dédiés aux phrases ;
+- conservation du quiz de vocabulaire existant ;
+- quiz mixtes de 15 questions, avec 8 questions de vocabulaire et
+  7 questions de phrases ;
+- ordre mélangé dans les quiz mixtes ;
+- saisie libre des réponses ;
+- indices à la demande et suivi de leur utilisation ;
+- prise en compte de traductions alternatives ;
+- résultats détaillés et historique ;
+- suivi de maîtrise indépendant pour les phrases ;
+- liens entre phrases et mots lorsque les données le permettent.
+
+Exclus :
+- création, modification ou suppression manuelle de phrases ;
+- import de phrases par fichier ;
+- récupération de phrases depuis Internet pendant les quiz ;
+- traduction français vers coréen ;
+- phrases intermédiaires ou avancées ;
+- exercices de grammaire autonomes.
+
+11. POINTS À DÉFINIR AVANT OU PENDANT L'IMPLÉMENTATION
+
+Les décisions fonctionnelles principales sont établies. Les détails
+suivants restent à préciser :
+
+1. Bibliothèque et droits d'utilisation
+   - choisir une ou plusieurs bibliothèques adaptées ;
+   - vérifier la qualité des traductions, la licence et les conditions
+     de redistribution des contenus intégrés ;
+   - déterminer le volume initial de phrases.
+
+2. Évaluation des réponses
+   - définir la normalisation (espaces, ponctuation, accents, etc.) ;
+   - définir la gestion des traductions alternatives ;
+   - décider si les réponses partiellement correctes sont prises
+     en charge.
+
+3. Sélection des questions
+   - définir les règles de sélection et de non-répétition ;
+   - définir la pondération des phrases déjà maîtrisées par rapport
+     aux phrases à renforcer.
+
+4. Maîtrise
+   - définir les seuils et pondérations du calcul, en cohérence avec
+     le mécanisme existant.
+
+Ces points ne remettent pas en cause les décisions fonctionnelles
+validées dans ce document.
+
+12. CRITÈRES D'ACCEPTATION
+
+L'itération 2 est fonctionnellement livrée lorsque :
+- l'utilisateur peut lancer un quiz de vocabulaire sans régression ;
+- l'utilisateur peut lancer un quiz composé uniquement de phrases ;
+- l'utilisateur peut lancer un quiz mixte de 15 questions ;
+- le quiz mixte contient exactement 8 questions de vocabulaire et
+  7 questions de phrases ;
+- l'ordre des questions du quiz mixte est mélangé ;
+- les phrases proviennent de la bibliothèque locale intégrée ;
+- toutes les phrases proposées sont de niveau débutant ;
+- les quiz de phrases fonctionnent sans connexion Internet ;
+- l'utilisateur peut saisir une traduction française libre ;
+- l'utilisateur peut demander un indice et son utilisation est enregistrée ;
+- les résultats sont affichés à la fin de la session ;
+- les résultats d'un quiz mixte distinguent les deux catégories ;
+- l'historique des phrases est conservé ;
+- la maîtrise des phrases est suivie indépendamment de celle des mots ;
+- l'interface reste utilisable au clavier et avec un lecteur d'écran.
+
+FIN DU DOCUMENT
