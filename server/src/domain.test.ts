@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeFr, frMatch } from './normalize.ts';
 import { aggregateWord, levelOf, masteryScore } from './mastery.ts';
 import type { Attempt } from './mastery.ts';
-import { QUIZ_LENGTH, checkAnswer, selectQuestions } from './engine.ts';
+import { MIXED_PHRASE_COUNT, MIXED_VOCAB_COUNT, QUIZ_LENGTH, checkAnswer, checkPhraseAnswer, selectMixedQuestions, selectQuestions } from './engine.ts';
 import type { Candidate } from './engine.ts';
 
 // --- Normalisation stricte (PRD §4.2) -------------------------------------
@@ -71,15 +71,15 @@ test('aggregateWord : agrégation §5.4', () => {
 
 // --- Sélection pondérée (PRD §6.3) -----------------------------------------
 
-function candidates(spec: Array<[number, Candidate['level'], string | null]>): Candidate[] {
-  return spec.map(([meaningId, level, context]) => ({ meaningId, level, context }));
+function candidates(spec: Array<[number, Candidate['level'], string | null]>, kind: Candidate['kind'] = 'meaning'): Candidate[] {
+  return spec.map(([targetId, level, context]) => ({ kind, targetId, level, context }));
 }
 
 test('sélection standard : 15 max, sans remise, tout le monde si moins', () => {
   const pool = candidates(Array.from({ length: 40 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null]));
   const picked = selectQuestions(pool, 'standard', null);
   assert.equal(picked.length, QUIZ_LENGTH);
-  const ids = new Set(picked.map((p) => p.meaningId));
+  const ids = new Set(picked.map((p) => p.targetId));
   assert.equal(ids.size, QUIZ_LENGTH); // sans remise
   const small = selectQuestions(pool.slice(0, 5), 'standard', null);
   assert.equal(small.length, 5); // source pauvre → session réduite
@@ -120,9 +120,38 @@ test('sélection context : cible le contexte puis complète', () => {
     ...Array.from({ length: 20 }, (_, i) => [100 + i, 'new', 'Autre'] as [number, Candidate['level'], string | null]),
   ]);
   const picked = selectQuestions(pool, 'context', 'alimentation'); // insensible à la casse
-  const inCtx = picked.filter((p) => [1, 2, 4].includes(p.meaningId));
+  const inCtx = picked.filter((p) => [1, 2, 4].includes(p.targetId));
   assert.equal(inCtx.length, 3); // les 3 du contexte d'abord
   assert.equal(picked.length, QUIZ_LENGTH);
+});
+
+// --- Quiz mixte mots + phrases (itération 2 §2.3) ---------------------------
+
+test('sélection mixte : exactement 8 vocabulaire et 7 phrases, sans doublon', () => {
+  const vocab = candidates(Array.from({ length: 20 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null]));
+  const phrases = candidates(
+    Array.from({ length: 20 }, (_, i) => [100 + i, 'new', null] as [number, Candidate['level'], string | null]),
+    'phrase'
+  );
+  const picked = selectMixedQuestions(vocab, phrases, 'standard', null)!;
+  assert.equal(picked.length, QUIZ_LENGTH);
+  assert.equal(picked.filter((p) => p.kind === 'meaning').length, MIXED_VOCAB_COUNT);
+  assert.equal(picked.filter((p) => p.kind === 'phrase').length, MIXED_PHRASE_COUNT);
+  assert.equal(new Set(picked.map((p) => `${p.kind}:${p.targetId}`)).size, QUIZ_LENGTH); // sans remise
+});
+
+test('sélection mixte : bassin insuffisant → null (quota exact, pas de complétion croisée)', () => {
+  const vocab7 = candidates(Array.from({ length: 7 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null]));
+  const phrases6 = candidates(
+    Array.from({ length: 6 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null]),
+    'phrase'
+  );
+  const phrases7 = candidates(
+    Array.from({ length: 7 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null]),
+    'phrase'
+  );
+  assert.equal(selectMixedQuestions(vocab7, phrases7, 'standard', null), null);
+  assert.equal(selectMixedQuestions(candidates(Array.from({ length: 20 }, (_, i) => [i + 1, 'new', null] as [number, Candidate['level'], string | null])), phrases6, 'standard', null), null);
 });
 
 // --- Validation des réponses (PRD §4.2) -------------------------------------
@@ -145,4 +174,20 @@ test('checkAnswer : autre signification du mot = correcte, attribuée à ce sens
 test('checkAnswer : réponse hors champ = incorrecte', () => {
   assert.deepEqual(checkAnswer('poire', target, [target, other, third]), { correct: false, matchedMeaningId: null });
   assert.deepEqual(checkAnswer('', target, [target, other, third]), { correct: false, matchedMeaningId: null });
+});
+
+// --- Validation des phrases (itération 2 §5.2) -------------------------------
+
+const phrase = { id: 1, translation: 'Je mange une pomme.', alts: ['Je mange des pommes'] };
+
+test('checkPhraseAnswer : principale et alternative, normalisées', () => {
+  assert.ok(checkPhraseAnswer('je mange une pomme', phrase)); // casse + ponctuation
+  assert.ok(checkPhraseAnswer('Je mange des pommes', phrase)); // alternative
+  assert.ok(checkPhraseAnswer('JE MANGE UNE POMME !!', phrase));
+});
+
+test('checkPhraseAnswer : pas de correction partielle ni de repli', () => {
+  assert.ok(!checkPhraseAnswer('je mange une poire', phrase)); // mot erroné
+  assert.ok(!checkPhraseAnswer('mange pomme', phrase)); // partiel
+  assert.ok(!checkPhraseAnswer('', phrase));
 });

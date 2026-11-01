@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { LEVEL_LABELS, SOURCE_LABELS, api } from './api';
-import type { SessionSummary, Stats, WordSource } from './api';
+import { KIND_LABELS, LEVEL_LABELS, SOURCE_LABELS, api } from './api';
+import type { SessionKind, SessionSummary, Stats, WordSource } from './api';
 
 const MODE_LABELS: Record<string, string> = {
   standard: 'Standard',
@@ -95,6 +95,50 @@ export function History(): JSX.Element {
         )}
       </section>
 
+      <section className="card" aria-label="Progrès des phrases">
+        <h2>Phrases</h2>
+        <p className="word-meta">
+          {stats.phrases.total} phrases débutantes dans la bibliothèque · suivi indépendant du vocabulaire
+        </p>
+        <ul className="level-grid">
+          {(['mastered', 'reinforce', 'weak', 'new'] as const).map((lvl) => (
+            <li key={lvl}>
+              <span className={`badge badge-${lvl}`}>{LEVEL_LABELS[lvl]}</span>
+              <strong> {stats.phrases.byLevel[lvl]}</strong>
+            </li>
+          ))}
+        </ul>
+
+        {stats.phrases.weakPhrases.length > 0 && (
+          <div>
+            <h3>Phrases à retravailler</h3>
+            <ul className="meanings">
+              {stats.phrases.weakPhrases.map((p) => (
+                <li key={p.phraseId} className="meaning-detail">
+                  <span lang="ko">{p.korean}</span> — {p.translation}
+                  {p.theme ? ` (${p.theme})` : ''} · {p.attempts} tentative{p.attempts > 1 ? 's' : ''} · score{' '}
+                  {(p.score * 100).toFixed(0)} %
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {stats.phrases.hintDependent.length > 0 && (
+          <div>
+            <h3>Phrases dépendantes des indices</h3>
+            <ul className="meanings">
+              {stats.phrases.hintDependent.map((p) => (
+                <li key={p.phraseId} className="meaning-detail">
+                  <span lang="ko">{p.korean}</span> — {p.translation} · {Math.round(p.hintRatio * 100)} % de réponses avec
+                  indice
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
       <section className="card" aria-label="Historique des sessions">
         <h2>Historique</h2>
         {sessions.length === 0 && <p className="empty">Aucune session pour l'instant.</p>}
@@ -105,7 +149,9 @@ export function History(): JSX.Element {
                 <strong>
                   {s.correct} / {s.total}
                 </strong>
-                <span className="word-meta">{MODE_LABELS[s.mode] ?? s.mode}</span>
+                <span className="word-meta">
+                  {KIND_LABELS[s.kind as SessionKind] ?? s.kind} · {MODE_LABELS[s.mode] ?? s.mode}
+                </span>
                 {s.context_filter && <span className="word-meta">· {s.context_filter}</span>}
                 {s.source_filter && <span className="word-meta">· {SOURCE_LABELS[s.source_filter as WordSource] ?? s.source_filter}</span>}
               </div>

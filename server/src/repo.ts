@@ -1,8 +1,8 @@
 import type { DB } from './db.ts';
 import type { Attempt, Level } from './mastery.ts';
 import { aggregateWord, levelOf, masteryScore } from './mastery.ts';
-import type { Candidate, QuizMode } from './engine.ts';
-import { QUIZ_LENGTH, selectQuestions } from './engine.ts';
+import type { Candidate, QuizMode, SessionKind } from './engine.ts';
+import { MIXED_PHRASE_COUNT, MIXED_VOCAB_COUNT, QUIZ_LENGTH, selectMixedQuestions, selectQuestions } from './engine.ts';
 
 export interface MeaningDTO {
   id: number;
@@ -51,6 +51,7 @@ export interface WordInput {
 export interface SessionQuestionView {
   id: number;
   position: number;
+  kind: 'vocab' | 'phrase';
   korean: string;
   romanization: string | null;
   pos: string | null;
@@ -79,8 +80,18 @@ interface MeaningRow {
   example_fr: string | null;
 }
 
+export interface PhraseRow {
+  id: number;
+  korean: string;
+  translation: string;
+  romanization: string | null;
+  difficulty: string;
+  hint: string | null;
+  theme: string | null;
+  grammar_point: string | null;
+}
+
 interface AttemptRow {
-  meaning_id: number;
   correct: number;
   hint_used: number;
 }
@@ -91,26 +102,47 @@ export class ConflictError extends Error {
   }
 }
 
-function attemptsByMeaning(db: DB): Map<number, AttemptRow[]> {
-  const map = new Map<number, AttemptRow[]>();
-  for (const row of db.prepare('SELECT meaning_id, correct, hint_used FROM attempt_log ORDER BY id').all() as AttemptRow[]) {
-    const list = map.get(row.meaning_id) ?? [];
-    list.push(row);
-    map.set(row.meaning_id, list);
+interface LogRow extends AttemptRow {
+  kind: string;
+  meaning_id: number | null;
+  phrase_id: number | null;
+}
+
+/** Journal des tentatives indexé par cible : mots et phrases (itération 2 §7). */
+function attemptsIndex(db: DB): { meanings: Map<number, AttemptRow[]>; phrases: Map<number, AttemptRow[]> } {
+  const meanings = new Map<number, AttemptRow[]>();
+  const phrases = new Map<number, AttemptRow[]>();
+  const rows = db
+    .prepare('SELECT kind, meaning_id, phrase_id, correct, hint_used FROM attempt_log ORDER BY id')
+    .all() as LogRow[];
+  for (const row of rows) {
+    if (row.kind === 'phrase' && row.phrase_id !== null) {
+      const list = phrases.get(row.phrase_id) ?? [];
+      list.push(row);
+      phrases.set(row.phrase_id, list);
+    } else if (row.meaning_id !== null) {
+      const list = meanings.get(row.meaning_id) ?? [];
+      list.push(row);
+      meanings.set(row.meaning_id, list);
+    }
   }
-  return map;
+  return { meanings, phrases };
+}
+
+function levelsOf(attempts: Map<number, AttemptRow[]>): Map<number, { level: Level; attempts: number; score: number | null }> {
+  const out = new Map<number, { level: Level; attempts: number; score: number | null }>();
+  for (const [id, list] of attempts) {
+    out.set(id, { level: levelOf(list), attempts: list.length, score: masteryScore(list) });
+  }
+  return out;
 }
 
 function levelsFor(db: DB): Map<number, { level: Level; attempts: number; score: number | null }> {
-  const out = new Map<number, { level: Level; attempts: number; score: number | null }>();
-  for (const [meaningId, attempts] of attemptsByMeaning(db)) {
-    out.set(meaningId, {
-      level: levelOf(attempts),
-      attempts: attempts.length,
-      score: masteryScore(attempts),
-    });
-  }
-  return out;
+  return levelsOf(attemptsIndex(db).meanings);
+}
+
+function phraseLevelsFor(db: DB): Map<number, { level: Level; attempts: number; score: number | null }> {
+  return levelsOf(attemptsIndex(db).phrases);
 }
 
 function altsByMeaning(db: DB): Map<number, string[]> {
@@ -246,6 +278,7 @@ export function deleteWord(db: DB, id: number): boolean {
 
 export interface CreatedSession {
   id: number;
+  kind: SessionKind;
   mode: QuizMode;
   contextFilter: string | null;
   sourceFilter: WordSource | null;
@@ -262,61 +295,117 @@ function quizCandidates(db: DB, source?: WordSource): Candidate[] {
     context: string | null;
   }[];
   const levels = levelsFor(db);
-  return rows.map((r) => ({ meaningId: r.meaning_id, level: levels.get(r.meaning_id)?.level ?? 'new', context: r.context }));
+  return rows.map((r) => ({ kind: 'meaning' as const, targetId: r.meaning_id, level: levels.get(r.meaning_id)?.level ?? 'new', context: r.context }));
 }
 
-export function createSession(db: DB, mode: QuizMode, context: string | null, source?: WordSource): CreatedSession | null {
-  const candidates = quizCandidates(db, source);
-  const selected = selectQuestions(candidates, mode, context);
-  if (selected.length === 0) return null;
-  const info = new Map(
+function phraseCandidates(db: DB): Candidate[] {
+  const rows = db.prepare('SELECT id, theme FROM phrases').all() as { id: number; theme: string | null }[];
+  const levels = phraseLevelsFor(db);
+  return rows.map((r) => ({ kind: 'phrase' as const, targetId: r.id, level: levels.get(r.id)?.level ?? 'new', context: r.theme }));
+}
+
+interface MeaningQuizInfo {
+  meaning_id: number;
+  translation: string;
+  hint: string | null;
+  korean: string;
+  romanization: string | null;
+  pos: string | null;
+}
+
+function meaningQuizInfo(db: DB): Map<number, MeaningQuizInfo> {
+  return new Map(
     (
       db
         .prepare(
           `SELECT m.id AS meaning_id, m.translation, m.hint, w.korean, w.romanization, w.pos
            FROM meanings m JOIN words w ON w.id = m.word_id`
         )
-        .all() as {
-        meaning_id: number;
-        translation: string;
-        hint: string | null;
-        korean: string;
-        romanization: string | null;
-        pos: string | null;
-      }[]
+        .all() as MeaningQuizInfo[]
     ).map((r) => [r.meaning_id, r])
   );
+}
+
+export function createSession(db: DB, mode: QuizMode, context: string | null, source: WordSource | undefined, kind: SessionKind): CreatedSession {
+  let selected: Candidate[];
+  if (kind === 'vocab') {
+    selected = selectQuestions(quizCandidates(db, source), mode, context);
+    if (selected.length === 0) throw new ConflictError('Aucune signification disponible — ajoutez des mots au dictionnaire.');
+  } else if (kind === 'phrases') {
+    selected = selectQuestions(phraseCandidates(db), mode, context);
+    if (selected.length === 0) throw new ConflictError('Aucune phrase disponible dans la bibliothèque.');
+  } else {
+    const mixed = selectMixedQuestions(quizCandidates(db, source), phraseCandidates(db), mode, context);
+    if (mixed === null) {
+      throw new ConflictError(
+        `Quiz mixte : il faut au moins ${MIXED_VOCAB_COUNT} significations de vocabulaire et ${MIXED_PHRASE_COUNT} phrases.`
+      );
+    }
+    selected = mixed;
+  }
+
+  const meanings = meaningQuizInfo(db);
+  const phrases = new Map(
+    (db.prepare('SELECT id, korean, translation, romanization, hint FROM phrases').all() as (PhraseRow & { translation: string })[]).map(
+      (p) => [p.id, p]
+    )
+  );
+
   const { sessionId, questions } = db.transaction(() => {
-    const s = db.prepare('INSERT INTO sessions (mode, context_filter, source_filter) VALUES (?, ?, ?)').run(mode, context, source ?? null);
+    const s = db
+      .prepare('INSERT INTO sessions (kind, mode, context_filter, source_filter) VALUES (?, ?, ?, ?)')
+      .run(kind, mode, context, source ?? null);
     const sid = Number(s.lastInsertRowid);
-    const insQ = db.prepare(
-      'INSERT INTO questions (session_id, meaning_id, position, expected_translation) VALUES (?, ?, ?, ?)'
+    const insMeaningQ = db.prepare(
+      `INSERT INTO questions (session_id, kind, meaning_id, position, expected_translation) VALUES (?, 'meaning', ?, ?, ?)`
+    );
+    const insPhraseQ = db.prepare(
+      `INSERT INTO questions (session_id, kind, phrase_id, position, expected_translation) VALUES (?, 'phrase', ?, ?, ?)`
     );
     const questions: SessionQuestionView[] = [];
     selected.forEach((c, i) => {
-      const m = info.get(c.meaningId)!;
-      const q = insQ.run(sid, c.meaningId, i + 1, m.translation);
-      questions.push({
-        id: Number(q.lastInsertRowid),
-        position: i + 1,
-        korean: m.korean,
-        romanization: m.romanization,
-        pos: m.pos,
-        hintAvailable: m.hint !== null,
-        answered: false,
-        userAnswer: null,
-        correct: null,
-      });
+      let q: { lastInsertRowid: number };
+      let view: Omit<SessionQuestionView, 'id' | 'position'>;
+      if (c.kind === 'meaning') {
+        const m = meanings.get(c.targetId)!;
+        q = insMeaningQ.run(sid, c.targetId, i + 1, m.translation);
+        view = {
+          kind: 'vocab',
+          korean: m.korean,
+          romanization: m.romanization,
+          pos: m.pos,
+          hintAvailable: m.hint !== null,
+          answered: false,
+          userAnswer: null,
+          correct: null,
+        };
+      } else {
+        const p = phrases.get(c.targetId)!;
+        q = insPhraseQ.run(sid, c.targetId, i + 1, p.translation);
+        view = {
+          kind: 'phrase',
+          korean: p.korean,
+          romanization: p.romanization,
+          pos: null,
+          hintAvailable: p.hint !== null,
+          answered: false,
+          userAnswer: null,
+          correct: null,
+        };
+      }
+      questions.push({ id: Number(q.lastInsertRowid), position: i + 1, ...view });
     });
     return { sessionId: sid, questions };
   });
-  return { id: sessionId, mode, contextFilter: context, sourceFilter: source ?? null, questions };
+  return { id: sessionId, kind, mode, contextFilter: context, sourceFilter: source ?? null, questions };
 }
 
 interface QuestionRow {
   id: number;
   session_id: number;
-  meaning_id: number;
+  kind: string;
+  meaning_id: number | null;
+  phrase_id: number | null;
   position: number;
   hint_used: number;
   answered: number;
@@ -330,6 +419,7 @@ interface QuestionRow {
 interface SessionRow {
   id: number;
   exercise_type: string;
+  kind: string;
   mode: string;
   context_filter: string | null;
   source_filter: WordSource | null;
@@ -347,6 +437,7 @@ function questionRows(db: DB, sessionId: number): QuestionRow[] {
 
 export interface SessionView {
   id: number;
+  kind: string;
   mode: string;
   context_filter: string | null;
   source_filter: WordSource | null;
@@ -355,35 +446,41 @@ export interface SessionView {
   questions: SessionQuestionView[];
 }
 
+function questionView(row: QuestionRow, info: { korean: string; romanization: string | null; pos: string | null; hint: string | null }): SessionQuestionView {
+  return {
+    id: row.id,
+    position: row.position,
+    kind: row.kind === 'phrase' ? 'phrase' : 'vocab',
+    korean: info.korean,
+    romanization: info.romanization,
+    pos: info.pos,
+    hintAvailable: info.hint !== null,
+    answered: row.answered === 1,
+    userAnswer: row.user_answer,
+    correct: row.correct === null ? null : row.correct === 1,
+  };
+}
+
 export function getSessionView(db: DB, id: number): SessionView | null {
   const s = sessionRow(db, id);
   if (!s) return null;
-  const info = new Map(
-    (
-      db
-        .prepare(
-          `SELECT m.id AS meaning_id, w.korean, w.romanization, w.pos, m.hint
-           FROM meanings m JOIN words w ON w.id = m.word_id`
-        )
-        .all() as { meaning_id: number; korean: string; romanization: string | null; pos: string | null; hint: string | null }[]
-    ).map((r) => [r.meaning_id, r])
+  const meanings = meaningQuizInfo(db);
+  const phrases = new Map(
+    (db.prepare('SELECT id, korean, romanization, hint FROM phrases').all() as { id: number; korean: string; romanization: string | null; hint: string | null }[]).map(
+      (p) => [p.id, p]
+    )
   );
-  const questions: SessionQuestionView[] = questionRows(db, id).map((q) => {
-    const m = info.get(q.meaning_id)!;
-    return {
-      id: q.id,
-      position: q.position,
-      korean: m.korean,
-      romanization: m.romanization,
-      pos: m.pos,
-      hintAvailable: m.hint !== null,
-      answered: q.answered === 1,
-      userAnswer: q.user_answer,
-      correct: q.correct === null ? null : q.correct === 1,
-    };
+  const questions = questionRows(db, id).map((q) => {
+    if (q.kind === 'phrase') {
+      const p = phrases.get(q.phrase_id!)!;
+      return questionView(q, { korean: p.korean, romanization: p.romanization, pos: null, hint: p.hint });
+    }
+    const m = meanings.get(q.meaning_id!)!;
+    return questionView(q, { korean: m.korean, romanization: m.romanization, pos: m.pos, hint: m.hint });
   });
   return {
     id: s.id,
+    kind: s.kind,
     mode: s.mode,
     context_filter: s.context_filter,
     source_filter: s.source_filter,
@@ -395,26 +492,99 @@ export function getSessionView(db: DB, id: number): SessionView | null {
 
 export function getHint(db: DB, sessionId: number, questionId: number): string | null | undefined {
   const q = db
-    .prepare('SELECT hint_used, answered, m.hint AS hint FROM questions q JOIN meanings m ON m.id = q.meaning_id WHERE q.id = ? AND q.session_id = ?')
-    .get(questionId, sessionId) as { hint_used: number; answered: number; hint: string | null } | undefined;
+    .prepare(
+      `SELECT q.kind, q.hint_used, q.answered, m.hint AS m_hint, p.hint AS p_hint
+       FROM questions q
+       LEFT JOIN meanings m ON m.id = q.meaning_id
+       LEFT JOIN phrases p ON p.id = q.phrase_id
+       WHERE q.id = ? AND q.session_id = ?`
+    )
+    .get(questionId, sessionId) as { kind: string; hint_used: number; answered: number; m_hint: string | null; p_hint: string | null } | undefined;
   if (!q || q.answered) return undefined;
   db.prepare('UPDATE questions SET hint_used = 1 WHERE id = ? AND answered = 0').run(questionId);
-  return q.hint;
+  return q.kind === 'phrase' ? q.p_hint : q.m_hint;
 }
 
-export interface AnswerOutcome {
-  correct: boolean;
-  expected: string;
-  matchedMeaningId: number | null;
-  targetMeaning: { id: number; translation: string; hint: string | null; context: string | null };
-  otherMeanings: { id: number; translation: string; hint: string | null; context: string | null }[];
-  finished: boolean;
+export type AnswerOutcome =
+  | {
+      kind: 'meaning';
+      correct: boolean;
+      expected: string;
+      matchedMeaningId: number | null;
+      targetMeaning: { id: number; translation: string; hint: string | null; context: string | null };
+      otherMeanings: { id: number; translation: string; hint: string | null; context: string | null }[];
+      finished: boolean;
+    }
+  | {
+      kind: 'phrase';
+      correct: boolean;
+      expected: string;
+      /** Autres traductions acceptées, affichées dans le retour (itération 2 §5.2/§6). */
+      acceptedTranslations: string[];
+      theme: string | null;
+      finished: boolean;
+    };
+
+export interface MeaningForJudge {
+  id: number;
+  translation: string;
+  alts: string[];
 }
 
-export function answerQuestion(db: DB, sessionId: number, questionId: number, answer: string, judge: (answer: string, target: { id: number; translation: string; alts: string[] }, wordMeanings: { id: number; translation: string; alts: string[] }[]) => { correct: boolean; matchedMeaningId: number | null }): AnswerOutcome | null | undefined {
+export interface PhraseForJudge {
+  id: number;
+  translation: string;
+  alts: string[];
+}
+
+export function answerQuestion(
+  db: DB,
+  sessionId: number,
+  questionId: number,
+  answer: string,
+  judge: (answer: string, target: MeaningForJudge, wordMeanings: MeaningForJudge[]) => { correct: boolean; matchedMeaningId: number | null },
+  phraseJudge: (answer: string, phrase: PhraseForJudge) => boolean
+): AnswerOutcome | null | undefined {
   const q = db.prepare('SELECT * FROM questions WHERE id = ? AND session_id = ?').get(questionId, sessionId) as QuestionRow | undefined;
   if (!q) return null;
   if (q.answered) return undefined;
+
+  if (q.kind === 'phrase') {
+    const phrase = db.prepare('SELECT id, translation, theme FROM phrases WHERE id = ?').get(q.phrase_id!) as
+      | { id: number; translation: string; theme: string | null }
+      | undefined;
+    if (!phrase) return null;
+    const alts = db
+      .prepare('SELECT text FROM phrase_translations WHERE phrase_id = ? ORDER BY id')
+      .all(phrase.id) as { text: string }[];
+    const correct = phraseJudge(answer, { id: phrase.id, translation: phrase.translation, alts: alts.map((a) => a.text) });
+
+    db.transaction(() => {
+      const res = db
+        .prepare(
+          `UPDATE questions SET answered = 1, user_answer = ?, correct = ?, answered_at = datetime('now')
+           WHERE id = ? AND answered = 0`
+        )
+        .run(answer, correct ? 1 : 0, questionId);
+      if (res.changes === 0) throw new ConflictError('Question déjà répondue.');
+      db.prepare(
+        `INSERT INTO attempt_log (kind, phrase_id, session_id, user_answer, correct, hint_used) VALUES ('phrase', ?, ?, ?, ?, ?)`
+      ).run(phrase.id, sessionId, answer, correct ? 1 : 0, q.hint_used);
+      const remaining = db.prepare('SELECT COUNT(*) AS n FROM questions WHERE session_id = ? AND answered = 0').get(sessionId) as { n: number };
+      if (remaining.n === 0) db.prepare("UPDATE sessions SET finished_at = datetime('now') WHERE id = ?").run(sessionId);
+    });
+
+    const s = sessionRow(db, sessionId)!;
+    return {
+      kind: 'phrase',
+      correct,
+      expected: q.expected_translation,
+      acceptedTranslations: alts.map((a) => a.text),
+      theme: phrase.theme,
+      finished: s.finished_at !== null,
+    };
+  }
+
   const wordIdRow = db.prepare('SELECT word_id FROM meanings WHERE id = ?').get(q.meaning_id) as { word_id: number };
   const rows = db
     .prepare(
@@ -423,13 +593,13 @@ export function answerQuestion(db: DB, sessionId: number, questionId: number, an
        WHERE m.word_id = ? ORDER BY m.id, t.id`
     )
     .all(wordIdRow.word_id) as { id: number; translation: string; alt: string | null }[];
-  const byId = new Map<number, { id: number; translation: string; alts: string[] }>();
+  const byId = new Map<number, MeaningForJudge>();
   for (const r of rows) {
     const m = byId.get(r.id) ?? { id: r.id, translation: r.translation, alts: [] as string[] };
     if (r.alt) m.alts.push(r.alt);
     byId.set(r.id, m);
   }
-  const target = byId.get(q.meaning_id)!;
+  const target = byId.get(q.meaning_id!)!;
   const verdict = judge(answer, target, [...byId.values()]);
 
   db.transaction(() => {
@@ -440,14 +610,10 @@ export function answerQuestion(db: DB, sessionId: number, questionId: number, an
       )
       .run(answer, verdict.correct ? 1 : 0, verdict.matchedMeaningId, questionId);
     if (res.changes === 0) throw new ConflictError('Question déjà répondue.');
-    const attemptMeaningId = verdict.matchedMeaningId ?? q.meaning_id;
-    db.prepare('INSERT INTO attempt_log (meaning_id, session_id, user_answer, correct, hint_used) VALUES (?, ?, ?, ?, ?)').run(
-      attemptMeaningId,
-      sessionId,
-      answer,
-      verdict.correct ? 1 : 0,
-      q.hint_used
-    );
+    const attemptMeaningId = verdict.matchedMeaningId ?? q.meaning_id!;
+    db.prepare(
+      `INSERT INTO attempt_log (kind, meaning_id, session_id, user_answer, correct, hint_used) VALUES ('meaning', ?, ?, ?, ?, ?)`
+    ).run(attemptMeaningId, sessionId, answer, verdict.correct ? 1 : 0, q.hint_used);
     const remaining = db.prepare('SELECT COUNT(*) AS n FROM questions WHERE session_id = ? AND answered = 0').get(sessionId) as { n: number };
     if (remaining.n === 0) db.prepare("UPDATE sessions SET finished_at = datetime('now') WHERE id = ?").run(sessionId);
   });
@@ -459,6 +625,7 @@ export function answerQuestion(db: DB, sessionId: number, questionId: number, an
   const targetFull = meanings.find((m) => m.id === q.meaning_id)!;
   const s = sessionRow(db, sessionId)!;
   return {
+    kind: 'meaning',
     correct: verdict.correct,
     expected: q.expected_translation,
     matchedMeaningId: verdict.matchedMeaningId,
@@ -470,6 +637,7 @@ export function answerQuestion(db: DB, sessionId: number, questionId: number, an
 
 export interface SessionSummary {
   id: number;
+  kind: string;
   mode: string;
   context_filter: string | null;
   source_filter: WordSource | null;
@@ -480,21 +648,21 @@ export interface SessionSummary {
 }
 
 export function listSessions(db: DB): SessionSummary[] {
-  const rows = db
+  return db
     .prepare(
-      `SELECT s.id, s.mode, s.context_filter, s.source_filter, s.started_at, s.finished_at,
+      `SELECT s.id, s.kind, s.mode, s.context_filter, s.source_filter, s.started_at, s.finished_at,
               COALESCE(SUM(q.correct), 0) AS correct, COUNT(q.id) AS total
        FROM sessions s LEFT JOIN questions q ON q.session_id = s.id
        GROUP BY s.id ORDER BY s.id DESC`
     )
-    .all() as (Omit<SessionSummary, 'correct' | 'total'> & { correct: number; total: number })[];
-  return rows;
+    .all() as SessionSummary[];
 }
 
 export interface SessionResults extends SessionSummary {
   questions: {
     id: number;
     position: number;
+    kind: 'vocab' | 'phrase';
     korean: string;
     hint_used: boolean;
     user_answer: string | null;
@@ -502,7 +670,9 @@ export interface SessionResults extends SessionSummary {
     expected: string;
     matched: string | null;
     otherMeanings: { translation: string; hint: string | null; context: string | null }[];
+    acceptedTranslations: string[];
   }[];
+  byCategory: { vocab: { correct: number; total: number }; phrases: { correct: number; total: number } };
   percent: number;
   incorrectCount: number;
   hintsUsed: number;
@@ -514,20 +684,42 @@ export function getResults(db: DB, id: number): SessionResults | null {
   if (!s) return null;
   const qs = questionRows(db, id);
   const wordsByMeaning = new Map(
-    (
-      db
-        .prepare(
-          `SELECT m.id AS meaning_id, m.word_id AS word_id FROM meanings m JOIN words w ON w.id = m.word_id`
-        )
-        .all() as { meaning_id: number; word_id: number }[]
-    ).map((r) => [r.meaning_id, r.word_id])
+    (db.prepare('SELECT m.id AS meaning_id, m.word_id AS word_id FROM meanings m JOIN words w ON w.id = m.word_id').all() as {
+      meaning_id: number;
+      word_id: number;
+    }[]).map((r) => [r.meaning_id, r.word_id])
   );
   const wordKorean = new Map(
     (db.prepare('SELECT id, korean FROM words').all() as { id: number; korean: string }[]).map((r) => [r.id, r.korean])
   );
   const allMeanings = db.prepare('SELECT id, word_id, translation, hint, context FROM meanings').all() as (MeaningRow & { translation: string })[];
+  const phraseKorean = new Map(
+    (db.prepare('SELECT id, korean FROM phrases').all() as { id: number; korean: string }[]).map((r) => [r.id, r.korean])
+  );
+  const phraseAlts = new Map<number, string[]>();
+  for (const row of db.prepare('SELECT phrase_id, text FROM phrase_translations ORDER BY id').all() as { phrase_id: number; text: string }[]) {
+    const list = phraseAlts.get(row.phrase_id) ?? [];
+    list.push(row.text);
+    phraseAlts.set(row.phrase_id, list);
+  }
+
   const questions = qs.map((q) => {
-    const wordId = wordsByMeaning.get(q.meaning_id)!;
+    if (q.kind === 'phrase') {
+      return {
+        id: q.id,
+        position: q.position,
+        kind: 'phrase' as const,
+        korean: phraseKorean.get(q.phrase_id!) ?? '',
+        hint_used: q.hint_used === 1,
+        user_answer: q.user_answer,
+        correct: q.correct === 1,
+        expected: q.expected_translation,
+        matched: null,
+        otherMeanings: [],
+        acceptedTranslations: phraseAlts.get(q.phrase_id!) ?? [],
+      };
+    }
+    const wordId = wordsByMeaning.get(q.meaning_id!)!;
     const others = allMeanings
       .filter((m) => m.word_id === wordId && m.id !== q.meaning_id)
       .map((m) => ({ translation: m.translation, hint: m.hint, context: m.context }));
@@ -535,6 +727,7 @@ export function getResults(db: DB, id: number): SessionResults | null {
     return {
       id: q.id,
       position: q.position,
+      kind: 'vocab' as const,
       korean: wordKorean.get(wordId)!,
       hint_used: q.hint_used === 1,
       user_answer: q.user_answer,
@@ -542,11 +735,15 @@ export function getResults(db: DB, id: number): SessionResults | null {
       expected: q.expected_translation,
       matched: matchedRow?.translation ?? null,
       otherMeanings: others,
+      acceptedTranslations: [],
     };
   });
   const correct = questions.filter((q) => q.correct).length;
+  const vocabQs = questions.filter((q) => q.kind === 'vocab');
+  const phraseQs = questions.filter((q) => q.kind === 'phrase');
   return {
     id: s.id,
+    kind: s.kind,
     mode: s.mode,
     context_filter: s.context_filter,
     source_filter: s.source_filter,
@@ -558,13 +755,25 @@ export function getResults(db: DB, id: number): SessionResults | null {
     incorrectCount: questions.length - correct,
     hintsUsed: questions.filter((q) => q.hint_used).length,
     correctWithoutHint: questions.filter((q) => q.correct && !q.hint_used).length,
+    byCategory: {
+      vocab: { correct: vocabQs.filter((q) => q.correct).length, total: vocabQs.length },
+      phrases: { correct: phraseQs.filter((q) => q.correct).length, total: phraseQs.length },
+    },
     questions,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Analyse des connaissances (PRD §6.2)
+// Analyse des connaissances (PRD §6.2 + itération 2 §7.3)
 // ---------------------------------------------------------------------------
+
+export interface PhraseStats {
+  total: number;
+  byLevel: Record<Level, number>;
+  weakPhrases: { phraseId: number; korean: string; translation: string; theme: string | null; score: number; attempts: number }[];
+  hintDependent: { phraseId: number; korean: string; translation: string; hintRatio: number; attempts: number }[];
+  themes: string[];
+}
 
 export interface StatsPayload {
   totalWords: number;
@@ -574,6 +783,15 @@ export interface StatsPayload {
   hintDependent: { meaningId: number; korean: string; translation: string; hintRatio: number; attempts: number }[];
   weakContexts: { context: string; weak: number; total: number }[];
   contexts: string[];
+  phrases: PhraseStats;
+}
+
+function hintRatio(db: DB, kind: 'meaning' | 'phrase', id: number): { hints: number } {
+  const col = kind === 'phrase' ? 'phrase_id' : 'meaning_id';
+  const row = db.prepare(`SELECT COUNT(*) AS hints FROM attempt_log WHERE kind = ? AND ${col} = ? AND hint_used = 1`).get(kind, id) as {
+    hints: number;
+  };
+  return row;
 }
 
 export function computeStats(db: DB): StatsPayload {
@@ -598,23 +816,15 @@ export function computeStats(db: DB): StatsPayload {
   const hintDependent = flat
     .filter((x) => {
       if (x.meaning.attempts < 2) return false;
-      const hintRows = db
-        .prepare('SELECT COUNT(*) AS n FROM attempt_log WHERE meaning_id = ? AND hint_used = 1')
-        .get(x.meaning.id) as { n: number };
-      return hintRows.n / x.meaning.attempts >= 0.5;
+      return hintRatio(db, 'meaning', x.meaning.id).hints / x.meaning.attempts >= 0.5;
     })
-    .map((x) => {
-      const hintRows = db
-        .prepare('SELECT COUNT(*) AS n FROM attempt_log WHERE meaning_id = ? AND hint_used = 1')
-        .get(x.meaning.id) as { n: number };
-      return {
-        meaningId: x.meaning.id,
-        korean: x.word.korean,
-        translation: x.meaning.translation,
-        hintRatio: hintRows.n / x.meaning.attempts,
-        attempts: x.meaning.attempts,
-      };
-    });
+    .map((x) => ({
+      meaningId: x.meaning.id,
+      korean: x.word.korean,
+      translation: x.meaning.translation,
+      hintRatio: hintRatio(db, 'meaning', x.meaning.id).hints / x.meaning.attempts,
+      attempts: x.meaning.attempts,
+    }));
 
   const contextMap = new Map<string, { weak: number; total: number }>();
   for (const { meaning } of flat) {
@@ -625,6 +835,42 @@ export function computeStats(db: DB): StatsPayload {
     if (meaning.level === 'weak') e.weak += 1;
     contextMap.set(key, e);
   }
+
+  // Phrases : maîtrise indépendante des mots (itération 2 §7.2).
+  const phraseRows = db.prepare('SELECT id, korean, translation, theme FROM phrases ORDER BY id').all() as {
+    id: number;
+    korean: string;
+    translation: string;
+    theme: string | null;
+  }[];
+  const phraseLevels = phraseLevelsFor(db);
+  const phraseByLevel: Record<Level, number> = { mastered: 0, reinforce: 0, weak: 0, new: 0 };
+  for (const p of phraseRows) phraseByLevel[phraseLevels.get(p.id)?.level ?? 'new'] += 1;
+  const weakPhrases = phraseRows
+    .map((p) => ({ ...p, l: phraseLevels.get(p.id) }))
+    .filter((p) => p.l?.level === 'weak')
+    .sort((a, b) => (a.l?.score ?? 0) - (b.l?.score ?? 0))
+    .slice(0, 20)
+    .map((p) => ({
+      phraseId: p.id,
+      korean: p.korean,
+      translation: p.translation,
+      theme: p.theme,
+      score: p.l?.score ?? 0,
+      attempts: p.l?.attempts ?? 0,
+    }));
+  const phraseHintDependent = phraseRows
+    .map((p) => ({ ...p, l: phraseLevels.get(p.id) }))
+    .filter((p) => (p.l?.attempts ?? 0) >= 2 && hintRatio(db, 'phrase', p.id).hints / (p.l?.attempts ?? 1) >= 0.5)
+    .map((p) => ({
+      phraseId: p.id,
+      korean: p.korean,
+      translation: p.translation,
+      hintRatio: hintRatio(db, 'phrase', p.id).hints / (p.l?.attempts ?? 1),
+      attempts: p.l?.attempts ?? 0,
+    }));
+  const themes = [...new Set(phraseRows.map((p) => p.theme).filter((t): t is string => t !== null))].sort();
+
   return {
     totalWords: words.length,
     totalMeanings: flat.length,
@@ -636,6 +882,13 @@ export function computeStats(db: DB): StatsPayload {
       .map(([context, v]) => ({ context, ...v }))
       .sort((a, b) => b.weak - a.weak),
     contexts: [...contextMap.keys()].sort(),
+    phrases: {
+      total: phraseRows.length,
+      byLevel: phraseByLevel,
+      weakPhrases,
+      hintDependent: phraseHintDependent,
+      themes,
+    },
   };
 }
 

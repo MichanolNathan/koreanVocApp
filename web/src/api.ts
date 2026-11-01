@@ -13,6 +13,15 @@ export const SOURCE_LABELS: Record<WordSource, string> = {
   personal: 'Personnel',
   official: 'Officiel',
 };
+
+export type SessionKind = 'vocab' | 'phrases' | 'mixed';
+
+export const KIND_LABELS: Record<SessionKind, string> = {
+  vocab: 'Vocabulaire',
+  phrases: 'Phrases',
+  mixed: 'Mixte',
+};
+
 export interface Meaning {
   id: number;
   translation: string;
@@ -61,6 +70,14 @@ async function req<T>(path: string, method: string, body?: unknown): Promise<T> 
   return data as T;
 }
 
+export interface PhraseStats {
+  total: number;
+  byLevel: Record<Level, number>;
+  weakPhrases: { phraseId: number; korean: string; translation: string; theme: string | null; score: number; attempts: number }[];
+  hintDependent: { phraseId: number; korean: string; translation: string; hintRatio: number; attempts: number }[];
+  themes: string[];
+}
+
 export interface Stats {
   totalWords: number;
   totalMeanings: number;
@@ -69,11 +86,13 @@ export interface Stats {
   hintDependent: { meaningId: number; korean: string; translation: string; hintRatio: number; attempts: number }[];
   weakContexts: { context: string; weak: number; total: number }[];
   contexts: string[];
+  phrases: PhraseStats;
 }
 
 export interface SessionQuestion {
   id: number;
   position: number;
+  kind: 'vocab' | 'phrase';
   korean: string;
   romanization: string | null;
   pos: string | null;
@@ -85,24 +104,37 @@ export interface SessionQuestion {
 
 export interface SessionCreated {
   id: number;
+  kind: SessionKind;
   mode: string;
   contextFilter: string | null;
   questions: SessionQuestion[];
 }
 
-export interface AnswerFeedback {
-  correct: boolean;
-  expected: string;
-  matchedMeaningId: number | null;
-  targetMeaning: { id: number; translation: string; hint: string | null; context: string | null };
-  otherMeanings: { id: number; translation: string; hint: string | null; context: string | null }[];
-  finished: boolean;
-}
+export type AnswerFeedback =
+  | {
+      kind: 'meaning';
+      correct: boolean;
+      expected: string;
+      matchedMeaningId: number | null;
+      targetMeaning: { id: number; translation: string; hint: string | null; context: string | null };
+      otherMeanings: { id: number; translation: string; hint: string | null; context: string | null }[];
+      finished: boolean;
+    }
+  | {
+      kind: 'phrase';
+      correct: boolean;
+      expected: string;
+      acceptedTranslations: string[];
+      theme: string | null;
+      finished: boolean;
+    };
 
 export interface SessionResults {
   id: number;
+  kind: string;
   mode: string;
   context_filter: string | null;
+  source_filter: string | null;
   started_at: string;
   finished_at: string | null;
   correct: number;
@@ -111,9 +143,11 @@ export interface SessionResults {
   incorrectCount: number;
   hintsUsed: number;
   correctWithoutHint: number;
+  byCategory: { vocab: { correct: number; total: number }; phrases: { correct: number; total: number } };
   questions: {
     id: number;
     position: number;
+    kind: 'vocab' | 'phrase';
     korean: string;
     hint_used: boolean;
     user_answer: string | null;
@@ -121,11 +155,13 @@ export interface SessionResults {
     expected: string;
     matched: string | null;
     otherMeanings: { translation: string; hint: string | null; context: string | null }[];
+    acceptedTranslations: string[];
   }[];
 }
 
 export interface SessionSummary {
   id: number;
+  kind: string;
   mode: string;
   context_filter: string | null;
   source_filter: string | null;
@@ -142,8 +178,8 @@ export const api = {
   updateWord: (id: number, w: unknown): Promise<Word> => req(`/words/${id}`, 'PUT', w),
   deleteWord: (id: number): Promise<void> => req(`/words/${id}`, 'DELETE'),
   stats: (): Promise<Stats> => req('/stats', 'GET'),
-  createSession: (mode: string, context?: string, source?: WordSource): Promise<SessionCreated> =>
-    req('/sessions', 'POST', { mode, ...(context ? { context } : {}), ...(source ? { source } : {}) }),
+  createSession: (kind: SessionKind, mode: string, context?: string, source?: WordSource): Promise<SessionCreated> =>
+    req('/sessions', 'POST', { kind, mode, ...(context ? { context } : {}), ...(source ? { source } : {}) }),
   answer: (sessionId: number, questionId: number, answer: string): Promise<AnswerFeedback> =>
     req(`/sessions/${sessionId}/questions/${questionId}/answer`, 'POST', { answer }),
   hint: (sessionId: number, questionId: number): Promise<{ hint: string | null }> =>

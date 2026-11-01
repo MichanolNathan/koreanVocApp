@@ -8,7 +8,7 @@
   --accent-soft: #e8eaf6;
   --ok: #2e7d32;
   --ok-soft: #e8f5e9;
-  --warn: #b26a00;
+  --warn: #8a5200;
   --warn-soft: #fff3e0;
   --bad: #c62828;
   --bad-soft: #ffebee;
@@ -209,7 +209,7 @@ button.danger {
 
 .badge-new {
   background: var(--neutral-soft);
-  color: var(--muted);
+  color: #454b57; /* contraste AA sur fond neutral-soft (le --muted échoue à 4,27:1) */
 }
 
 form {
@@ -257,6 +257,14 @@ textarea {
 .quiz-word {
   font-size: 3rem;
   font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+/* Phrase coréenne : plus longue qu'un mot, taille réduite mais lisible */
+.quiz-sentence {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.4;
   margin: 12px 0 4px;
 }
 

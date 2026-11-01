@@ -1,16 +1,18 @@
 # MyFlashcardApp
 
-Application personnelle de révision de vocabulaire coréen (coréen → français) : dictionnaire personnel, quiz de traduction, suivi individuel de la maîtrise par signification, et quiz ciblés sur les lacunes.
+Application personnelle de révision du coréen (coréen → français) : dictionnaire personnel, quiz de mots et de phrases, suivi indépendant de la maîtrise (signification par signification, phrase par phrase), et quiz ciblés sur les lacunes.
 
-Le cadrage fonctionnel complet et les décisions verrouillées sont dans [`docs/PRD.md`](docs/PRD.md).
+Cadrage fonctionnel : [`docs/PRD.md`](docs/PRD.md) (V1) et [`docs/PRD_iteration_2_traduction_phrases_v0.2.txt`](docs/PRD_iteration_2_traduction_phrases_v0.2.txt) (itération 2 — traduction de phrases).
 
-## Fonctionnalités (V1)
+## Fonctionnalités
 
 - **Dictionnaire personnel** : mots coréens avec romanisation, catégorie grammaticale, et une ou plusieurs **significations** (traduction principale + traductions alternatives acceptées, indice, contexte, exemples).
-- **Quiz de traduction** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
-- **Maîtrise par signification** : EWMA (λ = 0,6) sur les 10 dernières tentatives — réussite sans indice 1,0 · avec indice 0,6 · échec 0. Niveaux : Maîtrisé / À renforcer / Non maîtrisé / Non évalué ; une erreur isolée ne dégrade pas.
-- **Analyse et quiz ciblés** : points faibles, dépendance aux indices, contextes problématiques ; modes Standard (pondéré par faiblesse), Non maîtrisées, À renforcer, Mixte (70/30), Par contexte. Chaque quiz peut cibler un dictionnaire : Personnel, Officiel ou tous.
-- **Historique** des sessions avec résultats détaillés.
+- **Quiz de vocabulaire** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
+- **Quiz de phrases** (itération 2) : traduction de phrases coréennes débutantes (repère A1) issues d'une **bibliothèque de 80 phrases intégrée** — 7 thèmes du quotidien, aucune connexion nécessaire, aucune édition manuelle. Indice par phrase, traductions alternatives acceptées.
+- **Quiz mixte** : 15 questions — exactement 8 de vocabulaire et 7 de phrases, ordre mélangé — avec résultats ventilés par catégorie.
+- **Maîtrise EWMA** (λ = 0,6 sur les 10 dernières tentatives — sans indice 1,0 · avec 0,6 · échec 0) par signification **et** par phrase, indépendamment l'une de l'autre : rater une phrase ne dégrade pas les mots qu'elle contient. Niveaux : Maîtrisé / À renforcer / Non maîtrisé / Non évalué ; une erreur isolée ne dégrade pas.
+- **Analyse et quiz ciblés** : points faibles (mots et phrases), dépendance aux indices, contextes problématiques ; modes Standard (pondéré par faiblesse), Non maîtrisées, À renforcer, Priorité faibles (70/30), Par contexte (thème pour les phrases). Chaque quiz peut cibler un dictionnaire : Personnel, Officiel ou tous.
+- **Historique** des sessions avec résultats détaillés (type de quiz, détail par question, autres traductions acceptées).
 
 ## Branches & workflow de release
 
@@ -40,7 +42,7 @@ Cycle de release :
 
 ## Architecture
 
-- `server/` — Node + TypeScript + Express. SQLite via **sql.js** (WASM, zéro module natif : aucune chaîne de compilation nécessaire). La base tient en mémoire et est persistée dans un fichier unique à chaque écriture. Validation des réponses exclusivement côté serveur (les traductions attendues ne quittent jamais le serveur avant la réponse).
+- `server/` — Node + TypeScript + Express. SQLite via **sql.js** (WASM, zéro module natif : aucune chaîne de compilation nécessaire). La base tient en mémoire et est persistée dans un fichier unique à chaque écriture. Validation des réponses exclusivement côté serveur (les traductions attendues ne quittent jamais le serveur avant la réponse). Modules : `db` (schéma + migrations), `phrase-library` (bibliothèque intégrée, chargée/upsertée au démarrage), `mastery` (EWMA), `engine` (sélection + validation), `repo` + `routes` (API).
 - `web/` — SPA React + TypeScript (Vite). Responsive PC/mobile, utilisable au clavier, `aria-live` sur les retours.
 - En production, **un seul processus** : le serveur sert l'API (`/api/*`) et le build statique du client.
 
@@ -56,7 +58,7 @@ cd server && npm install && npm run dev
 cd web && npm install && npm run dev
 ```
 
-Tests unitaires du domaine (normalisation, maîtrise, sélection, validation) :
+Tests du domaine (normalisation, maîtrise, sélection, validation) et d'intégration du dépôt (bibliothèque, sessions phrases/mixtes, stats) :
 
 ```bash
 cd server && npm test
@@ -103,4 +105,6 @@ Le build client produit une PWA complète : manifeste, icônes (dont maskable et
 
 ## Données
 
-Schéma : `words` → `meanings` → `meaning_translations` ; `sessions` → `questions` ; `attempt_log` (journal des tentatives, source unique du calcul de maîtrise). L'édition d'un mot conserve l'historique des significations existantes (mise à jour en place par `id`).
+Schéma : `words` → `meanings` → `meaning_translations` ; `phrases` → `phrase_translations` (+ `phrase_vocab`, liens analyse seule) ; `sessions` → `questions` (cible signification **ou** phrase via `kind`) ; `attempt_log` (journal générique mots/phrases, source unique du calcul de maîtrise). L'édition d'un mot conserve l'historique des significations existantes (mise à jour en place par `id`) ; la bibliothèque de phrases est enrichie par upsert d'identifiants stables à chaque démarrage.
+
+**Migration v0.3 (itération 2)** : à la première ouverture d'une base existante, les tables `questions` et `attempt_log` sont reconstruites pour supporter les deux types de cibles — **une sauvegarde horodatée du fichier base est créée automatiquement à côté** (`app.db.backup-…`) avant toute modification.
