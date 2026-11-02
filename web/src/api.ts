@@ -26,6 +26,7 @@ export interface Meaning {
   id: number;
   translation: string;
   alts: string[];
+  pos: string | null;
   hint: string | null;
   context: string | null;
   example_ko: string | null;
@@ -39,7 +40,6 @@ export interface Word {
   id: number;
   korean: string;
   romanization: string | null;
-  pos: string | null;
   source: WordSource;
   level: Level;
   meanings: Meaning[];

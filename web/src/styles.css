@@ -89,6 +89,12 @@ main {
   justify-content: space-between;
 }
 
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
 button.primary {
   background: var(--accent);
   color: #fff;
@@ -170,6 +176,12 @@ button.danger {
 
 .meaning-translation {
   font-weight: 600;
+}
+
+.meaning-pos {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
 }
 
 .meaning-alt {

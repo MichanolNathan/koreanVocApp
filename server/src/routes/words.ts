@@ -35,6 +35,7 @@ function parseMeaning(m: unknown, errors: string[], idx: number): MeaningInput {
     example_ko: strOrNU(o.example_ko),
     example_fr: strOrNU(o.example_fr),
   };
+  if (o.pos !== undefined) out.pos = strOrNU(o.pos);
   if (typeof o.id === 'number') out.id = o.id;
   return out;
 }
@@ -54,13 +55,18 @@ function parseWordInput(body: unknown): ParseResult {
   } else {
     errors.push('Au moins une signification est requise.');
   }
+  // Ancien champ « pos » au niveau du mot (≤ v0.3) : repris comme catégorie
+  // par défaut des significations qui n'en définissent pas.
+  const legacyPos = strOrNU(o.pos);
+  if (legacyPos !== null) {
+    meanings = meanings.map((m) => (m.pos === undefined && m.translation.length > 0 ? { ...m, pos: legacyPos } : m));
+  }
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
     value: {
       korean,
       romanization: strOrNU(o.romanization),
-      pos: strOrNU(o.pos),
       source: o.source === 'official' ? 'official' : 'personal',
       meanings,
     },

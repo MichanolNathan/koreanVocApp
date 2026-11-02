@@ -166,9 +166,9 @@ test('non-régression : session vocabulaire inchangée (15, kind vocab)', async 
   assert.ok(session.questions.every((q) => q.kind === 'vocab'));
 });
 
-test('migration v0.3 : base v0.2.1 reconstruite avec sauvegarde du fichier, données conservées', async () => {
-  // Base à l'ancien schéma (avant itération 2) : questions et attempt_log
-  // mono-cible, avec une session et une tentative existantes.
+test('migration v0.3 + v0.4 : base v0.2.1 reconstruite avec sauvegarde, données et catégories conservées', async () => {
+  // Base à l'ancien schéma (avant itération 2 + catégorie au niveau du mot) :
+  // questions et attempt_log mono-cible, une session et une tentative existantes.
   const dir = mkdtempSync(join(tmpdir(), 'kvoc-mig-'));
   const dbPath = join(dir, 'app.db');
   const SQL = await initSqlJs();
@@ -177,10 +177,10 @@ test('migration v0.3 : base v0.2.1 reconstruite avec sauvegarde du fichier, donn
     CREATE TABLE words (id INTEGER PRIMARY KEY AUTOINCREMENT, korean TEXT NOT NULL UNIQUE, romanization TEXT, pos TEXT, source TEXT NOT NULL DEFAULT 'personal', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE meanings (id INTEGER PRIMARY KEY AUTOINCREMENT, word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE, translation TEXT NOT NULL, hint TEXT, context TEXT, example_ko TEXT, example_fr TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE meaning_translations (id INTEGER PRIMARY KEY AUTOINCREMENT, meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE, text TEXT NOT NULL);
-    CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_type TEXT NOT NULL DEFAULT 'translation', mode TEXT NOT NULL, context_filter TEXT, source_filter TEXT, started_at TEXT NOT NULL DEFAULT (datetime('now')), finished_at TEXT);
+    CREATE TABLE sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_type TEXT NOT NULL DEFAULT 'translation', mode TEXT NOT NULL, context_filter TEXT, started_at TEXT NOT NULL DEFAULT (datetime('now')), finished_at TEXT);
     CREATE TABLE questions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE, position INTEGER NOT NULL, hint_used INTEGER NOT NULL DEFAULT 0, answered INTEGER NOT NULL DEFAULT 0, user_answer TEXT, correct INTEGER, expected_translation TEXT NOT NULL, matched_meaning_id INTEGER, answered_at TEXT);
     CREATE TABLE attempt_log (id INTEGER PRIMARY KEY AUTOINCREMENT, meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE, session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL, user_answer TEXT, correct INTEGER NOT NULL, hint_used INTEGER NOT NULL, answered_at TEXT NOT NULL DEFAULT (datetime('now')));
-    INSERT INTO words (id, korean) VALUES (1, '사과');
+    INSERT INTO words (id, korean, pos) VALUES (1, '사과', 'nom');
     INSERT INTO meanings (id, word_id, translation) VALUES (1, 1, 'pomme');
     INSERT INTO sessions (id, mode) VALUES (1, 'standard');
     INSERT INTO questions (id, session_id, meaning_id, position, answered, correct, expected_translation) VALUES (1, 1, 1, 1, 1, 1, 'pomme');
@@ -197,11 +197,56 @@ test('migration v0.3 : base v0.2.1 reconstruite avec sauvegarde du fichier, donn
   assert.deepEqual(a, [{ kind: 'meaning', meaning_id: 1 }]);
   const s = db.prepare('SELECT kind FROM sessions').get() as { kind: string };
   assert.equal(s.kind, 'vocab');
+  // v0.4 : la catégorie du mot descend sur sa signification, words perd pos.
+  const m = db.prepare('SELECT id, translation, pos FROM meanings').all() as { id: number; translation: string; pos: string | null }[];
+  assert.deepEqual(m, [{ id: 1, translation: 'pomme', pos: 'nom' }]);
+  const wordCols = db.prepare('PRAGMA table_info(words)').all() as { name: string }[];
+  assert.ok(!wordCols.map((c) => c.name).includes('pos'), 'words ne doit plus porter de colonne pos');
+  // La cascade words → meanings survit à la reconstruction de words.
+  const sea = createWord(db, { korean: '바다', meanings: [{ translation: 'mer' }] });
+  deleteWord(db, sea.id);
+  const orphaned = db.prepare('SELECT COUNT(*) AS n FROM meanings WHERE word_id = ?').get(sea.id) as { n: number };
+  assert.equal(orphaned.n, 0);
   // Écriture d'une question phrase puis réouverture : stable, pas de nouvelle sauvegarde.
   db.exec("INSERT INTO phrases (id, korean, translation) VALUES (7, '안녕하세요.', 'bonjour.')");
   db.prepare("INSERT INTO questions (session_id, kind, phrase_id, position, expected_translation) VALUES (1, 'phrase', 7, 2, 'bonjour.')").run();
   await openDb(dbPath);
   assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1);
+});
+
+test('catégorie grammaticale par signification : création, édition en place, quiz', async () => {
+  const db = await openDb(':memory:');
+  const created = createWord(db, {
+    korean: '반짝',
+    romanization: 'banjjak',
+    meanings: [
+      { translation: 'scintillement', pos: 'nom' },
+      { translation: 'en scintillant', pos: 'adverbe' },
+    ],
+  });
+  assert.deepEqual(created.meanings.map((m) => m.pos), ['nom', 'adverbe']);
+
+  // Remplacement : la 1re signification garde son id (historique conservé),
+  // la 2e est recréée avec sa propre catégorie.
+  const updated = replaceWord(db, created.id, {
+    korean: '반짝',
+    meanings: [
+      { id: created.meanings[0]!.id, translation: 'éclat', pos: 'nom' },
+      { translation: 'en scintillant', pos: 'adverbe' },
+    ],
+  })!;
+  assert.equal(updated.meanings[0]!.id, created.meanings[0]!.id);
+  assert.deepEqual(updated.meanings.map((m) => m.pos), ['nom', 'adverbe']);
+
+  // Quiz : chaque question affiche la catégorie de la signification visée.
+  const session = createSession(db, 'standard', null, undefined, 'vocab');
+  const posList = session.questions.map((q) => q.pos).sort();
+  assert.deepEqual(posList, ['adverbe', 'nom']);
+
+  // Dictionnaire officiel : la catégorie descend aussi sur la signification.
+  loadOfficialDictionary(db);
+  const hoesawon = listWords(db, 'official').find((w) => w.korean === '회사원')!;
+  assert.equal(hoesawon.meanings[0]!.pos, 'nom');
 });
 
 // --- Dictionnaire officiel livré (v1.1.1) ------------------------------------

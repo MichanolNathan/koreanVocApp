@@ -5,9 +5,22 @@ import { WordForm } from './WordForm';
 
 type Category = 'all' | WordSource;
 
+/** Recherche insensible à la casse, aux accents et à la composition coréenne (jamo/syllabes). */
+function normalizeSearch(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim();
+}
+
+function matchesQuery(w: Word, query: string): boolean {
+  const q = normalizeSearch(query);
+  if (q.length === 0) return true;
+  const fields = [w.korean, w.romanization ?? '', ...w.meanings.flatMap((m) => [m.translation, ...m.alts])];
+  return fields.some((f) => normalizeSearch(f).includes(q));
+}
+
 export function Dictionary(): JSX.Element {
   const [words, setWords] = useState<Word[] | null>(null);
   const [category, setCategory] = useState<Category>('all');
+  const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Word | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +52,21 @@ export function Dictionary(): JSX.Element {
   if (words === null) return <p className="empty">Chargement…</p>;
 
   const showForm = creating || editing !== null;
-  const filtered = category === 'all' ? words : words.filter((w) => w.source === category);
+  const filtered = words.filter((w) => (category === 'all' || w.source === category) && matchesQuery(w, query));
   return (
     <>
       <section className="card toolbar" aria-label="Actions du dictionnaire">
         <h2>Dictionnaire ({filtered.length} mot{filtered.length > 1 ? 's' : ''})</h2>
+        {!showForm && (
+          <input
+            type="search"
+            className="search-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher — 사과, pomme, sagwa…"
+            aria-label="Rechercher un mot (coréen ou français)"
+          />
+        )}
         {!showForm && (
           <button type="button" className="primary" onClick={() => setCreating(true)}>
             Ajouter un mot
@@ -95,6 +118,9 @@ export function Dictionary(): JSX.Element {
           Aucun mot pour l'instant. Ajoutez votre premier mot coréen pour commencer à réviser.
         </p>
       )}
+      {query.trim().length > 0 && filtered.length === 0 && !showForm && (
+        <p className="empty">Aucun mot ne correspond à « {query.trim()} ».</p>
+      )}
 
       <ul className="word-list">
         {filtered.map((w) => (
@@ -104,7 +130,6 @@ export function Dictionary(): JSX.Element {
                 {w.korean}
               </span>
               {w.romanization && <span className="word-meta">{w.romanization}</span>}
-              {w.pos && <span className="word-meta">{w.pos}</span>}
               <span className={`badge badge-${w.level}`}>{LEVEL_LABELS[w.level]}</span>
               <span className={`badge badge-src-${w.source}`}>{SOURCE_LABELS[w.source] ?? w.source}</span>
               <span className="word-actions">
@@ -121,6 +146,7 @@ export function Dictionary(): JSX.Element {
                 <li key={m.id} className="meaning">
                   <div className="meaning-main">
                     <span className="meaning-translation">{m.translation}</span>
+                    {m.pos && <span className="meaning-pos">{m.pos}</span>}
                     {m.alts.length > 0 && <span className="meaning-alt">aussi : {m.alts.join(', ')}</span>}
                     <span className={`badge badge-${m.level}`}>{LEVEL_LABELS[m.level]}</span>
                   </div>
