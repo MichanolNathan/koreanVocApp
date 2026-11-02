@@ -6,7 +6,8 @@ Cadrage fonctionnel : [`docs/PRD.md`](docs/PRD.md) (V1) et [`docs/PRD_iteration_
 
 ## Fonctionnalités
 
-- **Dictionnaire personnel** : mots coréens avec romanisation, catégorie grammaticale, et une ou plusieurs **significations** (traduction principale + traductions alternatives acceptées, indice, contexte, exemples).
+* **Dictionnaire personnel** : mots coréens avec romanisation et une ou plusieurs **significations** (traduction principale + traductions alternatives acceptées, indice, contexte, exemples), chacune avec sa **catégorie grammaticale** — un même mot peut ainsi avoir un sens verbal et un sens nominal.
+* **Recherche dans le dictionnaire** : saisie en coréen (사과), en français (pomme) ou en romanisation (sagwa) — insensible à la casse, aux accents et à la composition coréenne (jamo/syllabes), combinable avec le filtre par dictionnaire.
 - **Dictionnaire officiel intégré** : 44 mots et expressions débutant livrés avec l'application (issus d'un deck Anki, traduits en français), disponibles dès l'installation et enrichis par les mises à jour. Les éditions et suppressions de l'utilisateur priment : le chargeur n'insère que des mots jamais livrés (registre interne `shipped_words`).
 - **Quiz de vocabulaire** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
 - **Quiz de phrases** (itération 2) : traduction de phrases coréennes débutantes (repère A1) issues d'une **bibliothèque de 80 phrases intégrée** — 7 thèmes du quotidien, aucune connexion nécessaire, aucune édition manuelle. Indice par phrase, traductions alternatives acceptées.

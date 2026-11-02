@@ -5,6 +5,7 @@ import type { Word, WordSource } from './api';
 interface MeaningDraft {
   id?: number;
   translation: string;
+  pos: string;
   alts: string;
   hint: string;
   context: string;
@@ -12,19 +13,19 @@ interface MeaningDraft {
   example_fr: string;
 }
 
-const emptyMeaning = (): MeaningDraft => ({ translation: '', alts: '', hint: '', context: '', example_ko: '', example_fr: '' });
+const emptyMeaning = (): MeaningDraft => ({ translation: '', pos: '', alts: '', hint: '', context: '', example_ko: '', example_fr: '' });
 
 export function WordForm(props: { initial: Word | null; onDone: () => void; onCancel: () => void }): JSX.Element {
   const { initial, onDone, onCancel } = props;
   const [korean, setKorean] = useState(initial?.korean ?? '');
   const [romanization, setRomanization] = useState(initial?.romanization ?? '');
-  const [pos, setPos] = useState(initial?.pos ?? '');
   const [source, setSource] = useState<WordSource>(initial?.source === 'official' ? 'official' : 'personal');
   const [meanings, setMeanings] = useState<MeaningDraft[]>(
     initial
       ? initial.meanings.map((m) => ({
           id: m.id,
           translation: m.translation,
+          pos: m.pos ?? '',
           alts: m.alts.join(', '),
           hint: m.hint ?? '',
           context: m.context ?? '',
@@ -47,11 +48,11 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
     const payload = {
       korean,
       romanization: romanization || null,
-      pos: pos || null,
       source,
       meanings: meanings.map((m) => ({
         ...(m.id ? { id: m.id } : {}),
         translation: m.translation,
+        pos: m.pos.trim() || null,
         alts: m.alts
           .split(',')
           .map((a) => a.trim())
@@ -87,10 +88,6 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
             <input value={romanization} onChange={(e) => setRomanization(e.target.value)} placeholder="sagwa" />
           </label>
           <label>
-            Catégorie grammaticale
-            <input value={pos} onChange={(e) => setPos(e.target.value)} placeholder="nom, verbe…" />
-          </label>
-          <label>
             Dictionnaire
             <select value={source} onChange={(e) => setSource(e.target.value as WordSource)}>
               <option value="personal">{SOURCE_LABELS.personal}</option>
@@ -108,11 +105,15 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
                 <input value={m.translation} onChange={(e) => setMeaning(i, { translation: e.target.value })} required />
               </label>
               <label>
-                Autres traductions (séparées par des virgules)
-                <input value={m.alts} onChange={(e) => setMeaning(i, { alts: e.target.value })} placeholder="fruit, pomme verte" />
+                Catégorie grammaticale
+                <input value={m.pos} onChange={(e) => setMeaning(i, { pos: e.target.value })} placeholder="nom, verbe…" />
               </label>
             </div>
             <div className="form-row">
+              <label>
+                Autres traductions (séparées par des virgules)
+                <input value={m.alts} onChange={(e) => setMeaning(i, { alts: e.target.value })} placeholder="fruit, pomme verte" />
+              </label>
               <label>
                 Indice
                 <input value={m.hint} onChange={(e) => setMeaning(i, { hint: e.target.value })} placeholder="Fruit rond" />

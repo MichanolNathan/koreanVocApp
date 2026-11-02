@@ -18,15 +18,18 @@ Application personnelle permettant d'apprendre, mémoriser et réviser du vocabu
 ### 2.1 Dictionnaire personnel
 Ajout manuel de mots coréens. Chaque mot :
 - Mot coréen (obligatoire, unique).
-- Romanisation, catégorie grammaticale (facultatifs).
+- Romanisation (facultative).
 - Une ou plusieurs **significations**.
 
 Chaque signification :
 - Traduction principale (obligatoire).
+- Catégorie grammaticale (facultative) — propre à chaque signification : un même mot peut avoir un sens verbal et un sens nominal.
 - Traductions alternatives acceptées (facultatives, liste).
 - Indice (facultatif) — utilisé par le bouton indice du quiz.
 - Contexte d'utilisation (facultatif).
 - Exemple coréen + traduction (facultatifs).
+
+Recherche plein dictionnaire : coréen, français (traductions principales et alternatives) ou romanisation, insensible à la casse et aux accents.
 
 ### 2.2 Significations indépendantes
 Exemple 사과 : « pomme » (Alimentation), « excuses » (Relations sociales), « regrets » (Expression personnelle). Chaque signification possède sa propre traduction, son indice, son contexte, son historique et son niveau de maîtrise. La maîtrise d'une traduction n'implique pas celle des autres sens.
