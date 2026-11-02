@@ -44,7 +44,6 @@ const SCHEMA = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     korean TEXT NOT NULL UNIQUE,
     romanization TEXT,
-    pos TEXT,
     source TEXT NOT NULL DEFAULT 'personal',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -53,6 +52,7 @@ const SCHEMA = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
     translation TEXT NOT NULL,
+    pos TEXT,
     hint TEXT,
     context TEXT,
     example_ko TEXT,
@@ -185,60 +185,98 @@ function backupDbFile(path: string): string {
 }
 
 /**
- * Migration v0.3 (itération 2) : généralisation des cibles de questions et de
- * tentatives (mots ET phrases). SQLite ne peut ni relâcher un NOT NULL ni
- * modifier une contrainte par ALTER : questions et attempt_log sont
- * reconstruites à l'identique (les lignes existantes deviennent kind
- * 'meaning'). Le fichier base est sauvegardé avant reconstruction.
+ * Migrations incrémentales détectées via PRAGMA table_info :
+ *
+ * - v0.3 (itération 2) : généralisation des cibles de questions et de
+ *   tentatives (mots ET phrases). SQLite ne peut ni relâcher un NOT NULL ni
+ *   modifier une contrainte par ALTER : questions et attempt_log sont
+ *   reconstruites à l'identique (les lignes existantes deviennent kind
+ *   'meaning').
+ *
+ * - v0.4 : la catégorie grammaticale descend au niveau de la signification
+ *   (un même mot peut avoir un sens verbal et un sens nominal). meanings
+ *   gagne une colonne pos remplie depuis words.pos ; words est reconstruit
+ *   sans pos. Les clés étrangères sont désactivées pendant la reconstruction
+ *   (le DROP d'une table parente déclencherait sinon les ON DELETE CASCADE).
+ *
+ * Le fichier base est sauvegardé avant toute migration destructrice.
  */
 function migrate(raw: RawDatabase, path: string): void {
   const sessionCols = tableColumns(raw, 'sessions');
   if (!sessionCols.has('source_filter')) raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
   if (!sessionCols.has('kind')) raw.exec("ALTER TABLE sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'vocab'");
 
-  if (tableColumns(raw, 'questions').has('kind') && tableColumns(raw, 'attempt_log').has('kind')) return;
+  const hasKindCols = tableColumns(raw, 'questions').has('kind') && tableColumns(raw, 'attempt_log').has('kind');
+  const hasMeaningPos = tableColumns(raw, 'meanings').has('pos');
+  if (hasKindCols && hasMeaningPos) return;
   if (path !== ':memory:') {
     console.warn(`Sauvegarde de la base avant migration : ${backupDbFile(path)}`);
   }
-  raw.exec(`
-    CREATE TABLE questions_v03 (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
-      meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
-      phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
-      position INTEGER NOT NULL,
-      hint_used INTEGER NOT NULL DEFAULT 0,
-      answered INTEGER NOT NULL DEFAULT 0,
-      user_answer TEXT,
-      correct INTEGER,
-      expected_translation TEXT NOT NULL,
-      matched_meaning_id INTEGER,
-      answered_at TEXT,
-      CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
-    );
-    INSERT INTO questions_v03 (id, session_id, kind, meaning_id, phrase_id, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at)
-      SELECT id, session_id, 'meaning', meaning_id, NULL, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at FROM questions;
-    DROP TABLE questions;
-    ALTER TABLE questions_v03 RENAME TO questions;
 
-    CREATE TABLE attempt_log_v03 (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
-      meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
-      phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
-      session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-      user_answer TEXT,
-      correct INTEGER NOT NULL,
-      hint_used INTEGER NOT NULL,
-      answered_at TEXT NOT NULL DEFAULT (datetime('now')),
-      CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
-    );
-    INSERT INTO attempt_log_v03 (id, kind, meaning_id, phrase_id, session_id, user_answer, correct, hint_used, answered_at)
-      SELECT id, 'meaning', meaning_id, NULL, session_id, user_answer, correct, hint_used, answered_at FROM attempt_log;
-    DROP TABLE attempt_log;
-    ALTER TABLE attempt_log_v03 RENAME TO attempt_log;
-  `);
+  if (!hasKindCols) {
+    raw.exec(`
+      CREATE TABLE questions_v03 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+        meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+        phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        hint_used INTEGER NOT NULL DEFAULT 0,
+        answered INTEGER NOT NULL DEFAULT 0,
+        user_answer TEXT,
+        correct INTEGER,
+        expected_translation TEXT NOT NULL,
+        matched_meaning_id INTEGER,
+        answered_at TEXT,
+        CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
+      );
+      INSERT INTO questions_v03 (id, session_id, kind, meaning_id, phrase_id, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at)
+        SELECT id, session_id, 'meaning', meaning_id, NULL, position, hint_used, answered, user_answer, correct, expected_translation, matched_meaning_id, answered_at FROM questions;
+      DROP TABLE questions;
+      ALTER TABLE questions_v03 RENAME TO questions;
+
+      CREATE TABLE attempt_log_v03 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT 'meaning' CHECK (kind IN ('meaning','phrase')),
+        meaning_id INTEGER REFERENCES meanings(id) ON DELETE CASCADE,
+        phrase_id INTEGER REFERENCES phrases(id) ON DELETE CASCADE,
+        session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+        user_answer TEXT,
+        correct INTEGER NOT NULL,
+        hint_used INTEGER NOT NULL,
+        answered_at TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK ((kind = 'meaning' AND meaning_id IS NOT NULL) OR (kind = 'phrase' AND phrase_id IS NOT NULL))
+      );
+      INSERT INTO attempt_log_v03 (id, kind, meaning_id, phrase_id, session_id, user_answer, correct, hint_used, answered_at)
+        SELECT id, 'meaning', meaning_id, NULL, session_id, user_answer, correct, hint_used, answered_at FROM attempt_log;
+      DROP TABLE attempt_log;
+      ALTER TABLE attempt_log_v03 RENAME TO attempt_log;
+    `);
+  }
+
+  if (!hasMeaningPos) {
+    raw.exec(`
+      ALTER TABLE meanings ADD COLUMN pos TEXT;
+      UPDATE meanings SET pos = (SELECT w.pos FROM words w WHERE w.id = meanings.word_id);
+    `);
+    raw.exec('PRAGMA foreign_keys = OFF');
+    raw.exec(`
+      CREATE TABLE words_v04 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        korean TEXT NOT NULL UNIQUE,
+        romanization TEXT,
+        source TEXT NOT NULL DEFAULT 'personal',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO words_v04 (id, korean, romanization, source, created_at)
+        SELECT id, korean, romanization, source, created_at FROM words;
+      DROP TABLE words;
+      ALTER TABLE words_v04 RENAME TO words;
+      DELETE FROM sqlite_sequence WHERE name = 'words_v04';
+    `);
+    raw.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 export async function openDb(path: string): Promise<DB> {

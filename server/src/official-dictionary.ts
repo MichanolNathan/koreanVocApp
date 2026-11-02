@@ -86,15 +86,15 @@ export function loadOfficialDictionary(db: DB): number {
     const delivered = new Set(
       (db.prepare('SELECT korean FROM shipped_words').all() as { korean: string }[]).map((r) => r.korean)
     );
-    const insWord = db.prepare("INSERT INTO words (korean, romanization, pos, source) VALUES (?, ?, ?, 'official')");
-    const insMeaning = db.prepare('INSERT INTO meanings (word_id, translation, hint) VALUES (?, ?, ?)');
+    const insWord = db.prepare("INSERT INTO words (korean, romanization, source) VALUES (?, ?, 'official')");
+    const insMeaning = db.prepare('INSERT INTO meanings (word_id, translation, pos, hint) VALUES (?, ?, ?, ?)');
     const insAlt = db.prepare('INSERT INTO meaning_translations (meaning_id, text) VALUES (?, ?)');
     const mark = db.prepare('INSERT INTO shipped_words (korean) VALUES (?)');
     let added = 0;
     for (const w of OFFICIAL_DICTIONARY) {
       if (existing.has(w.korean) || delivered.has(w.korean)) continue;
-      const word = insWord.run(w.korean, w.romanization ?? null, w.pos ?? null);
-      const meaning = insMeaning.run(Number(word.lastInsertRowid), w.translation, w.hint ?? null);
+      const word = insWord.run(w.korean, w.romanization ?? null);
+      const meaning = insMeaning.run(Number(word.lastInsertRowid), w.translation, w.pos ?? null, w.hint ?? null);
       for (const alt of w.alts ?? []) insAlt.run(Number(meaning.lastInsertRowid), alt);
       mark.run(w.korean);
       added++;
