@@ -24,12 +24,8 @@ function parseMeaning(m: unknown, errors: string[], idx: number): MeaningInput {
   const o = m as Record<string, unknown>;
   const translation = typeof o.translation === 'string' ? o.translation.trim() : '';
   if (translation.length === 0) errors.push(`Signification ${idx + 1} : traduction principale obligatoire.`);
-  const alts = Array.isArray(o.alts)
-    ? o.alts.filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
-    : [];
   const out: MeaningInput = {
     translation,
-    alts,
     hint: strOrNU(o.hint),
     context: strOrNU(o.context),
     example_ko: strOrNU(o.example_ko),

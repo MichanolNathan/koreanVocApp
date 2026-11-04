@@ -6,7 +6,7 @@ Cadrage fonctionnel : [`docs/PRD.md`](docs/PRD.md) (V1) et [`docs/PRD_iteration_
 
 ## Fonctionnalités
 
-* **Dictionnaire personnel** : mots coréens avec romanisation et une ou plusieurs **significations** (traduction principale + traductions alternatives acceptées, indice, contexte, exemples), chacune avec sa **catégorie grammaticale** — un même mot peut ainsi avoir un sens verbal et un sens nominal.
+* **Dictionnaire personnel** : mots coréens avec romanisation et une ou plusieurs **significations** (traduction, indice, contexte, exemples), chacune avec sa **catégorie grammaticale** — un même mot peut ainsi avoir un sens verbal et un sens nominal.
 * **Recherche dans le dictionnaire** : saisie en coréen (사과), en français (pomme) ou en romanisation (sagwa) — insensible à la casse, aux accents et à la composition coréenne (jamo/syllabes), combinable avec le filtre par dictionnaire.
 - **Dictionnaire officiel intégré** : 44 mots et expressions débutant livrés avec l'application (issus d'un deck Anki, traduits en français), disponibles dès l'installation et enrichis par les mises à jour. Les éditions et suppressions de l'utilisateur priment : le chargeur n'insère que des mots jamais livrés (registre interne `shipped_words`).
 - **Quiz de vocabulaire** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
@@ -107,6 +107,8 @@ Le build client produit une PWA complète : manifeste, icônes (dont maskable et
 
 ## Données
 
-Schéma : `words` → `meanings` → `meaning_translations` ; `phrases` → `phrase_translations` (+ `phrase_vocab`, liens analyse seule) ; `sessions` → `questions` (cible signification **ou** phrase via `kind`) ; `attempt_log` (journal générique mots/phrases, source unique du calcul de maîtrise). L'édition d'un mot conserve l'historique des significations existantes (mise à jour en place par `id`) ; la bibliothèque de phrases est enrichie par upsert d'identifiants stables à chaque démarrage.
+Schéma : `words` → `meanings` ; `phrases` → `phrase_translations` (+ `phrase_vocab`, liens analyse seule) ; `sessions` → `questions` (cible signification **ou** phrase via `kind`) ; `attempt_log` (journal générique mots/phrases, source unique du calcul de maîtrise). L'édition d'un mot conserve l'historique des significations existantes (mise à jour en place par `id`) ; la bibliothèque de phrases est enrichie par upsert d'identifiants stables à chaque démarrage.
 
 **Migration v0.3 (itération 2)** : à la première ouverture d'une base existante, les tables `questions` et `attempt_log` sont reconstruites pour supporter les deux types de cibles — **une sauvegarde horodatée du fichier base est créée automatiquement à côté** (`app.db.backup-…`) avant toute modification.
+
+**Migration v0.5** : le champ « autres traductions » par signification (`meaning_translations`) dupliquant la multi-signification, chaque traduction alternative existante est convertie en signification supplémentaire du mot (catégorie et contexte héritées, indice non repris, doublons normalisés écartés) puis la table est supprimée — avec la même sauvegarde automatique préalable. Les traductions alternatives des **phrases** (`phrase_translations`) restent inchangées.

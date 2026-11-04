@@ -24,12 +24,11 @@ Ajout manuel de mots coréens. Chaque mot :
 Chaque signification :
 - Traduction principale (obligatoire).
 - Catégorie grammaticale (facultative) — propre à chaque signification : un même mot peut avoir un sens verbal et un sens nominal.
-- Traductions alternatives acceptées (facultatives, liste).
 - Indice (facultatif) — utilisé par le bouton indice du quiz.
 - Contexte d'utilisation (facultatif).
 - Exemple coréen + traduction (facultatifs).
 
-Recherche plein dictionnaire : coréen, français (traductions principales et alternatives) ou romanisation, insensible à la casse et aux accents.
+Recherche plein dictionnaire : coréen, français (traductions des significations) ou romanisation, insensible à la casse et aux accents.
 
 ### 2.2 Significations indépendantes
 Exemple 사과 : « pomme » (Alimentation), « excuses » (Relations sociales), « regrets » (Expression personnelle). Chaque signification possède sa propre traduction, son indice, son contexte, son historique et son niveau de maîtrise. La maîtrise d'une traduction n'implique pas celle des autres sens.
@@ -51,7 +50,7 @@ Le moteur récupère les significations à réviser depuis une source, puis les 
 - Questions présentées une par une ; mot coréen affiché ; saisie libre en français.
 - Bouton « Indice » explicite : révèle l'indice de la signification cible ; jamais automatique ; usage enregistré par question ; une réponse correcte avec indice reste correcte (mais vaut 0,6 au lieu de 1 dans le score de maîtrise).
 - **Une seule réponse par question** ; la bonne réponse est rappelée dans les résultats.
-- **Validation stricte normalisée** : la réponse est correcte si, après normalisation, elle égale la traduction principale ou une traduction alternative de l'une des significations du mot. Normalisation : minuscules, suppression des accents, de la ponctuation, des articles définis/indéfinis en tête (le, la, l', les, un, une, du, de, des), pluriel (« s » final du dernier mot ignoré), espaces compressés.
+- **Validation stricte normalisée** : la réponse est correcte si, après normalisation, elle égale la traduction de l'une des significations du mot. Normalisation : minuscules, suppression des accents, de la ponctuation, des articles définis/indéfinis en tête (le, la, l', les, un, une, du, de, des), pluriel (« s » final du dernier mot ignoré), espaces compressés.
 - **Multi-significations** : si la réponse correspond à une autre signification du mot que celle visée, elle est comptée correcte ; la tentative est alors enregistrée sur la signification correspondante ; les résultats affichent tous les sens du mot.
 
 ### 4.3 Résultats (fin de session uniquement)

@@ -156,11 +156,11 @@ test('sélection mixte : bassin insuffisant → null (quota exact, pas de compl�
 
 // --- Validation des réponses (PRD §4.2) -------------------------------------
 
-const target = { id: 1, translation: 'pomme', alts: ['fruit (pomme)'] };
-const other = { id: 2, translation: 'excuses', alts: [] };
-const third = { id: 3, translation: 'regrets', alts: [] };
+const target = { id: 1, translation: 'pomme' };
+const other = { id: 2, translation: 'excuses' };
+const third = { id: 3, translation: 'regrets' };
 
-test('checkAnswer : traduction principale, alternative, normalisée', () => {
+test('checkAnswer : traduction de la cible, normalisée', () => {
   assert.deepEqual(checkAnswer('Pomme', target, [target, other, third]), { correct: true, matchedMeaningId: 1 });
   assert.deepEqual(checkAnswer('une pomme', target, [target, other, third]), { correct: true, matchedMeaningId: 1 });
   assert.deepEqual(checkAnswer('des pommes', target, [target, other, third]), { correct: true, matchedMeaningId: 1 });

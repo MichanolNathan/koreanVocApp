@@ -25,7 +25,6 @@ export const KIND_LABELS: Record<SessionKind, string> = {
 export interface Meaning {
   id: number;
   translation: string;
-  alts: string[];
   pos: string | null;
   hint: string | null;
   context: string | null;

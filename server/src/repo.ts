@@ -8,7 +8,6 @@ export interface MeaningDTO {
   id: number;
   translation: string;
   pos: string | null;
-  alts: string[];
   hint: string | null;
   context: string | null;
   example_ko: string | null;
@@ -31,7 +30,6 @@ export interface WordDTO {
 export interface MeaningInput {
   id?: number;
   translation: string;
-  alts?: string[];
   pos?: string | null;
   hint?: string | null;
   context?: string | null;
@@ -145,18 +143,8 @@ function phraseLevelsFor(db: DB): Map<number, { level: Level; attempts: number; 
   return levelsOf(attemptsIndex(db).phrases);
 }
 
-function altsByMeaning(db: DB): Map<number, string[]> {
-  const map = new Map<number, string[]>();
-  for (const row of db.prepare('SELECT meaning_id, text FROM meaning_translations ORDER BY id').all() as { meaning_id: number; text: string }[]) {
-    const list = map.get(row.meaning_id) ?? [];
-    list.push(row.text);
-    map.set(row.meaning_id, list);
-  }
-  return map;
-}
 
 function assembleWord(db: DB, word: WordRow, meanings: MeaningRow[]): WordDTO {
-  const alts = altsByMeaning(db);
   const levels = levelsFor(db);
   const meaningDTOs: MeaningDTO[] = meanings.map((m) => {
     const l = levels.get(m.id);
@@ -164,7 +152,6 @@ function assembleWord(db: DB, word: WordRow, meanings: MeaningRow[]): WordDTO {
       id: m.id,
       translation: m.translation,
       pos: m.pos,
-      alts: alts.get(m.id) ?? [],
       hint: m.hint,
       context: m.context,
       example_ko: m.example_ko,
@@ -208,10 +195,8 @@ function insertMeanings(db: DB, wordId: number, meanings: MeaningInput[]): void 
   const insMeaning = db.prepare(
     'INSERT INTO meanings (word_id, translation, pos, hint, context, example_ko, example_fr) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
-  const insAlt = db.prepare('INSERT INTO meaning_translations (meaning_id, text) VALUES (?, ?)');
   for (const m of meanings) {
-    const r = insMeaning.run(wordId, m.translation, m.pos ?? null, m.hint ?? null, m.context ?? null, m.example_ko ?? null, m.example_fr ?? null);
-    for (const alt of m.alts ?? []) insAlt.run(Number(r.lastInsertRowid), alt);
+    insMeaning.run(wordId, m.translation, m.pos ?? null, m.hint ?? null, m.context ?? null, m.example_ko ?? null, m.example_fr ?? null);
   }
 }
 
@@ -248,13 +233,9 @@ export function replaceWord(db: DB, id: number, input: WordInput): WordDTO | nul
     const updMeaning = db.prepare(
       'UPDATE meanings SET translation = ?, pos = ?, hint = ?, context = ?, example_ko = ?, example_fr = ? WHERE id = ? AND word_id = ?'
     );
-    const delAlts = db.prepare('DELETE FROM meaning_translations WHERE meaning_id = ?');
-    const insAlt = db.prepare('INSERT INTO meaning_translations (meaning_id, text) VALUES (?, ?)');
     for (const m of input.meanings) {
       if (m.id && current.meanings.some((c) => c.id === m.id)) {
         updMeaning.run(m.translation, m.pos ?? null, m.hint ?? null, m.context ?? null, m.example_ko ?? null, m.example_fr ?? null, m.id, id);
-        delAlts.run(m.id);
-        for (const alt of m.alts ?? []) insAlt.run(m.id, alt);
         keepIds.add(m.id);
       }
     }
@@ -527,7 +508,6 @@ export type AnswerOutcome =
 export interface MeaningForJudge {
   id: number;
   translation: string;
-  alts: string[];
 }
 
 export interface PhraseForJudge {
@@ -585,21 +565,11 @@ export function answerQuestion(
   }
 
   const wordIdRow = db.prepare('SELECT word_id FROM meanings WHERE id = ?').get(q.meaning_id) as { word_id: number };
-  const rows = db
-    .prepare(
-      `SELECT m.id, m.translation, t.text AS alt FROM meanings m
-       LEFT JOIN meaning_translations t ON t.meaning_id = m.id
-       WHERE m.word_id = ? ORDER BY m.id, t.id`
-    )
-    .all(wordIdRow.word_id) as { id: number; translation: string; alt: string | null }[];
-  const byId = new Map<number, MeaningForJudge>();
-  for (const r of rows) {
-    const m = byId.get(r.id) ?? { id: r.id, translation: r.translation, alts: [] as string[] };
-    if (r.alt) m.alts.push(r.alt);
-    byId.set(r.id, m);
-  }
-  const target = byId.get(q.meaning_id!)!;
-  const verdict = judge(answer, target, [...byId.values()]);
+  const wordMeanings = db
+    .prepare('SELECT id, translation FROM meanings WHERE word_id = ? ORDER BY id')
+    .all(wordIdRow.word_id) as MeaningForJudge[];
+  const target = wordMeanings.find((m) => m.id === q.meaning_id)!;
+  const verdict = judge(answer, target, wordMeanings);
 
   db.transaction(() => {
     const res = db
@@ -617,7 +587,7 @@ export function answerQuestion(
     if (remaining.n === 0) db.prepare("UPDATE sessions SET finished_at = datetime('now') WHERE id = ?").run(sessionId);
   });
 
-  const meanings = [...byId.values()].map((m) => {
+  const meanings = wordMeanings.map((m) => {
     const full = db.prepare('SELECT hint, context FROM meanings WHERE id = ?').get(m.id) as { hint: string | null; context: string | null };
     return { id: m.id, translation: m.translation, hint: full.hint, context: full.context };
   });
