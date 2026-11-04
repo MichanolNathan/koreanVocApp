@@ -19,58 +19,58 @@ export interface OfficialWordSeed {
   korean: string;
   romanization?: string;
   pos?: string;
-  translation: string;
-  alts?: string[];
+  /** Traductions du mot, la première est la principale. Les suivantes sont d'anciennes « autres traductions » (v0.5) devenues significations. */
+  translations: string[];
   hint?: string;
 }
 
 export const OFFICIAL_DICTIONARY: OfficialWordSeed[] = [
-  { korean: '회사원', romanization: 'hoesawon', pos: 'nom', translation: 'employé de bureau' },
-  { korean: '나', romanization: 'na', pos: 'pronom', translation: 'moi', alts: ['je'], hint: 'forme familière' },
-  { korean: '너무', romanization: 'neomu', pos: 'adverbe', translation: 'trop', alts: ['très'] },
-  { korean: '바쁘다', romanization: 'bappeuda', pos: 'verbe', translation: 'être occupé', alts: ['être affairé'] },
-  { korean: '보통', romanization: 'botong', pos: 'adverbe', translation: 'd’habitude', alts: ['habituellement', 'ordinaire'] },
-  { korean: '주말', romanization: 'jumal', pos: 'nom', translation: 'week-end' },
-  { korean: '우리', romanization: 'uri', pos: 'pronom', translation: 'nous', alts: ['notre'] },
-  { korean: '만나다', romanization: 'mannada', pos: 'verbe', translation: 'rencontrer', alts: ['se rencontrer'] },
-  { korean: '영화', romanization: 'yeonghwa', pos: 'nom', translation: 'film' },
-  { korean: '카페', romanization: 'kape', pos: 'nom', translation: 'café', alts: ['salon de café'], hint: 'l’établissement' },
-  { korean: '저', romanization: 'jeo', pos: 'pronom', translation: 'moi', alts: ['je'], hint: 'forme polie/humble' },
-  { korean: '제', romanization: 'je', pos: 'pronom', translation: 'moi', alts: ['je', 'mon'], hint: 'forme polie de 저 (je / mon)' },
-  { korean: '내', romanization: 'nae', pos: 'pronom', translation: 'moi', alts: ['je', 'mon'], hint: 'forme familière de 나 (je / mon)' },
-  { korean: '너', romanization: 'neo', pos: 'pronom', translation: 'toi', alts: ['tu'], hint: 'forme familière' },
-  { korean: '회사', romanization: 'hoesa', pos: 'nom', translation: 'entreprise', alts: ['société'] },
-  { korean: '일하다', romanization: 'ilhada', pos: 'verbe', translation: 'travailler' },
-  { korean: '너무 바쁘다', romanization: 'neomu bappeuda', pos: 'expression', translation: 'être trop occupé' },
-  { korean: '예쁘다', romanization: 'yeppeuda', pos: 'verbe', translation: 'être joli', alts: ['être beau', 'être belle'] },
-  { korean: '요즘', romanization: 'yojeum', pos: 'adverbe', translation: 'ces derniers temps', alts: ['récemment', 'en ce moment'] },
-  { korean: '요즘 바쁘다', romanization: 'yojeum bappeuda', pos: 'expression', translation: 'être occupé ces temps-ci' },
-  { korean: '바쁜 사람', romanization: 'bappeun saram', pos: 'expression', translation: 'personne occupée', alts: ['personne affairée'] },
-  { korean: '바쁘게', romanization: 'bappeuge', pos: 'adverbe', translation: 'avec empressement', alts: ['à la hâte'], hint: 'forme adverbiale de 바쁘다 (occupé)' },
-  { korean: '한가하다', romanization: 'hangahada', pos: 'verbe', translation: 'être libre', alts: ['ne pas être occupé'] },
-  { korean: '우리 집', romanization: 'uri jip', pos: 'expression', translation: 'chez nous', alts: ['notre maison'] },
-  { korean: '보통 때', romanization: 'botong ttae', pos: 'expression', translation: 'd’habitude', alts: ['en temps normal'] },
-  { korean: '보통 사람', romanization: 'botong saram', pos: 'expression', translation: 'personne ordinaire' },
-  { korean: '이번 주말', romanization: 'ibeon jumal', pos: 'expression', translation: 'ce week-end' },
-  { korean: '주말에', romanization: 'jumare', pos: 'expression', translation: 'le week-end', hint: '에 indique le moment' },
-  { korean: '주말마다', romanization: 'jumalmada', pos: 'expression', translation: 'tous les week-ends', alts: ['chaque week-end'] },
-  { korean: '쉬다', romanization: 'swida', pos: 'verbe', translation: 'se reposer', alts: ['faire une pause'] },
-  { korean: '평일', romanization: 'pyeongil', pos: 'nom', translation: 'jour de semaine', alts: ['jour ouvrable'] },
-  { korean: '우연히 만나다', romanization: 'uyeonhi mannada', pos: 'expression', translation: 'croiser par hasard', alts: ['rencontrer par hasard'] },
-  { korean: '못 만나다', romanization: 'mot mannada', pos: 'expression', translation: 'ne pas pouvoir voir', alts: ['ne pas pouvoir rencontrer'] },
-  { korean: '안 만나다', romanization: 'an mannada', pos: 'expression', translation: 'ne pas rencontrer', hint: '안 = négation' },
-  { korean: '헤어지다', romanization: 'heeojida', pos: 'verbe', translation: 'se quitter', alts: ['se dire au revoir', 'se séparer'] },
+  { korean: '회사원', romanization: 'hoesawon', pos: 'nom', translations: ['employé de bureau'] },
+  { korean: '나', romanization: 'na', pos: 'pronom', translations: ['moi', 'je'], hint: 'forme familière' },
+  { korean: '너무', romanization: 'neomu', pos: 'adverbe', translations: ['trop', 'très'] },
+  { korean: '바쁘다', romanization: 'bappeuda', pos: 'verbe', translations: ['être occupé', 'être affairé'] },
+  { korean: '보통', romanization: 'botong', pos: 'adverbe', translations: ['d’habitude', 'habituellement', 'ordinaire'] },
+  { korean: '주말', romanization: 'jumal', pos: 'nom', translations: ['week-end'] },
+  { korean: '우리', romanization: 'uri', pos: 'pronom', translations: ['nous', 'notre'] },
+  { korean: '만나다', romanization: 'mannada', pos: 'verbe', translations: ['rencontrer', 'se rencontrer'] },
+  { korean: '영화', romanization: 'yeonghwa', pos: 'nom', translations: ['film'] },
+  { korean: '카페', romanization: 'kape', pos: 'nom', translations: ['café', 'salon de café'], hint: 'l’établissement' },
+  { korean: '저', romanization: 'jeo', pos: 'pronom', translations: ['moi', 'je'], hint: 'forme polie/humble' },
+  { korean: '제', romanization: 'je', pos: 'pronom', translations: ['moi', 'je', 'mon'], hint: 'forme polie de 저 (je / mon)' },
+  { korean: '내', romanization: 'nae', pos: 'pronom', translations: ['moi', 'je', 'mon'], hint: 'forme familière de 나 (je / mon)' },
+  { korean: '너', romanization: 'neo', pos: 'pronom', translations: ['toi', 'tu'], hint: 'forme familière' },
+  { korean: '회사', romanization: 'hoesa', pos: 'nom', translations: ['entreprise', 'société'] },
+  { korean: '일하다', romanization: 'ilhada', pos: 'verbe', translations: ['travailler'] },
+  { korean: '너무 바쁘다', romanization: 'neomu bappeuda', pos: 'expression', translations: ['être trop occupé'] },
+  { korean: '예쁘다', romanization: 'yeppeuda', pos: 'verbe', translations: ['être joli', 'être beau', 'être belle'] },
+  { korean: '요즘', romanization: 'yojeum', pos: 'adverbe', translations: ['ces derniers temps', 'récemment', 'en ce moment'] },
+  { korean: '요즘 바쁘다', romanization: 'yojeum bappeuda', pos: 'expression', translations: ['être occupé ces temps-ci'] },
+  { korean: '바쁜 사람', romanization: 'bappeun saram', pos: 'expression', translations: ['personne occupée', 'personne affairée'] },
+  { korean: '바쁘게', romanization: 'bappeuge', pos: 'adverbe', translations: ['avec empressement', 'à la hâte'], hint: 'forme adverbiale de 바쁘다 (occupé)' },
+  { korean: '한가하다', romanization: 'hangahada', pos: 'verbe', translations: ['être libre', 'ne pas être occupé'] },
+  { korean: '우리 집', romanization: 'uri jip', pos: 'expression', translations: ['chez nous', 'notre maison'] },
+  { korean: '보통 때', romanization: 'botong ttae', pos: 'expression', translations: ['d’habitude', 'en temps normal'] },
+  { korean: '보통 사람', romanization: 'botong saram', pos: 'expression', translations: ['personne ordinaire'] },
+  { korean: '이번 주말', romanization: 'ibeon jumal', pos: 'expression', translations: ['ce week-end'] },
+  { korean: '주말에', romanization: 'jumare', pos: 'expression', translations: ['le week-end'], hint: '에 indique le moment' },
+  { korean: '주말마다', romanization: 'jumalmada', pos: 'expression', translations: ['tous les week-ends', 'chaque week-end'] },
+  { korean: '쉬다', romanization: 'swida', pos: 'verbe', translations: ['se reposer', 'faire une pause'] },
+  { korean: '평일', romanization: 'pyeongil', pos: 'nom', translations: ['jour de semaine', 'jour ouvrable'] },
+  { korean: '우연히 만나다', romanization: 'uyeonhi mannada', pos: 'expression', translations: ['croiser par hasard', 'rencontrer par hasard'] },
+  { korean: '못 만나다', romanization: 'mot mannada', pos: 'expression', translations: ['ne pas pouvoir voir', 'ne pas pouvoir rencontrer'] },
+  { korean: '안 만나다', romanization: 'an mannada', pos: 'expression', translations: ['ne pas rencontrer'], hint: '안 = négation' },
+  { korean: '헤어지다', romanization: 'heeojida', pos: 'verbe', translations: ['se quitter', 'se dire au revoir', 'se séparer'] },
   // Coquille du deck corrigée : « 우여히 » n’existe pas, c’est 우연히.
-  { korean: '우연히', romanization: 'uyeonhi', pos: 'adverbe', translation: 'par hasard', alts: ['par accident'] },
+  { korean: '우연히', romanization: 'uyeonhi', pos: 'adverbe', translations: ['par hasard', 'par accident'] },
   // Champ HTML dans le deck : « not able to (in front of verb) » une fois nettoyé.
-  { korean: '못', romanization: 'mot', pos: 'adverbe', translation: 'ne pas pouvoir', hint: 'se place devant le verbe' },
-  { korean: '영화를 보다', romanization: 'yeonghwareul boda', pos: 'expression', translation: 'regarder un film', alts: ['voir un film'] },
-  { korean: '영화관', romanization: 'yeonghwagwan', pos: 'nom', translation: 'cinéma', alts: ['salle de cinéma'] },
-  { korean: '주인공', romanization: 'juingong', pos: 'nom', translation: 'personnage principal', alts: ['protagoniste', 'héros'] },
-  { korean: '영화배우', romanization: 'yeonghwabaeu', pos: 'nom', translation: 'acteur de cinéma', alts: ['actrice de cinéma'] },
-  { korean: '카페에 가다', romanization: 'kapee gada', pos: 'expression', translation: 'aller au café' },
-  { korean: '커피', romanization: 'keopi', pos: 'nom', translation: 'café', hint: 'la boisson' },
-  { korean: '차', romanization: 'cha', pos: 'nom', translation: 'thé' },
+  { korean: '못', romanization: 'mot', pos: 'adverbe', translations: ['ne pas pouvoir'], hint: 'se place devant le verbe' },
+  { korean: '영화를 보다', romanization: 'yeonghwareul boda', pos: 'expression', translations: ['regarder un film', 'voir un film'] },
+  { korean: '영화관', romanization: 'yeonghwagwan', pos: 'nom', translations: ['cinéma', 'salle de cinéma'] },
+  { korean: '주인공', romanization: 'juingong', pos: 'nom', translations: ['personnage principal', 'protagoniste', 'héros'] },
+  { korean: '영화배우', romanization: 'yeonghwabaeu', pos: 'nom', translations: ['acteur de cinéma', 'actrice de cinéma'] },
+  { korean: '카페에 가다', romanization: 'kapee gada', pos: 'expression', translations: ['aller au café'] },
+  { korean: '커피', romanization: 'keopi', pos: 'nom', translations: ['café'], hint: 'la boisson' },
+  { korean: '차', romanization: 'cha', pos: 'nom', translations: ['thé'] },
 ];
 
 /**
@@ -88,14 +88,18 @@ export function loadOfficialDictionary(db: DB): number {
     );
     const insWord = db.prepare("INSERT INTO words (korean, romanization, source) VALUES (?, ?, 'official')");
     const insMeaning = db.prepare('INSERT INTO meanings (word_id, translation, pos, hint) VALUES (?, ?, ?, ?)');
-    const insAlt = db.prepare('INSERT INTO meaning_translations (meaning_id, text) VALUES (?, ?)');
     const mark = db.prepare('INSERT INTO shipped_words (korean) VALUES (?)');
     let added = 0;
     for (const w of OFFICIAL_DICTIONARY) {
       if (existing.has(w.korean) || delivered.has(w.korean)) continue;
       const word = insWord.run(w.korean, w.romanization ?? null);
-      const meaning = insMeaning.run(Number(word.lastInsertRowid), w.translation, w.pos ?? null, w.hint ?? null);
-      for (const alt of w.alts ?? []) insAlt.run(Number(meaning.lastInsertRowid), alt);
+      const wordId = Number(word.lastInsertRowid);
+      // La première traduction est la signification principale et porte
+      // l'indice ; les suivantes (anciennes alternatives) n'en ont pas —
+      // il décrivait la traduction principale.
+      w.translations.forEach((translation, i) => {
+        insMeaning.run(wordId, translation, w.pos ?? null, i === 0 ? (w.hint ?? null) : null);
+      });
       mark.run(w.korean);
       added++;
     }

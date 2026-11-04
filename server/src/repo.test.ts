@@ -214,6 +214,57 @@ test('migration v0.3 + v0.4 : base v0.2.1 reconstruite avec sauvegarde, données
   assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1);
 });
 
+test('migration v0.5 : les autres traductions deviennent des significations du mot', async () => {
+  // Base au schéma v0.4 : le champ « autres traductions » existe encore
+  // (meaning_translations) et deux mots l'utilisent — dont un doublon
+  // normalisé (« Pomme » ≈ « pomme ») qui doit être écarté.
+  const dir = mkdtempSync(join(tmpdir(), 'kvoc-alts-'));
+  const dbPath = join(dir, 'app.db');
+  const SQL = await initSqlJs();
+  const raw = new SQL.Database();
+  raw.exec(`
+    CREATE TABLE words (id INTEGER PRIMARY KEY AUTOINCREMENT, korean TEXT NOT NULL UNIQUE, romanization TEXT, source TEXT NOT NULL DEFAULT 'personal', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE meanings (id INTEGER PRIMARY KEY AUTOINCREMENT, word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE, translation TEXT NOT NULL, pos TEXT, hint TEXT, context TEXT, example_ko TEXT, example_fr TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE meaning_translations (id INTEGER PRIMARY KEY AUTOINCREMENT, meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE, text TEXT NOT NULL);
+    INSERT INTO words (id, korean) VALUES (1, '사과'), (2, '바다');
+    INSERT INTO meanings (id, word_id, translation, pos, hint, context) VALUES (1, 1, 'pomme', 'nom', 'fruit rond', 'Alimentation');
+    INSERT INTO meanings (id, word_id, translation, pos, context) VALUES (2, 2, 'mer', 'nom', 'Nature');
+    INSERT INTO meaning_translations (meaning_id, text) VALUES (1, 'fruit'), (1, 'Pomme'), (2, 'océan');
+  `);
+  writeFileSync(dbPath, Buffer.from(raw.export()));
+
+  const db = await openDb(dbPath);
+  assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1, 'sauvegarde avant conversion');
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'meaning_translations'").get()!.n,
+    0,
+    'la table meaning_translations doit disparaître'
+  );
+
+  // Catégorie et contexte hérités ; pas l'indice (il décrivait la
+  // traduction principale et pourrait divulguer la réponse) ; doublon écarté.
+  const sagwa = listWords(db).find((w) => w.korean === '사과')!;
+  assert.deepEqual(
+    sagwa.meanings.map((m) => ({ translation: m.translation, pos: m.pos, hint: m.hint, context: m.context })),
+    [
+      { translation: 'pomme', pos: 'nom', hint: 'fruit rond', context: 'Alimentation' },
+      { translation: 'fruit', pos: 'nom', hint: null, context: 'Alimentation' },
+    ]
+  );
+  const sea = listWords(db).find((w) => w.korean === '바다')!;
+  assert.deepEqual(sea.meanings.map((m) => m.translation), ['mer', 'océan']);
+
+  // L'ancienne alternative reste acceptée en quiz : elle est désormais une
+  // autre signification du même mot (PRD §4.2).
+  const judges = sagwa.meanings.map((m) => ({ id: m.id, translation: m.translation }));
+  assert.deepEqual(checkAnswer('fruit', judges[0]!, judges), { correct: true, matchedMeaningId: sagwa.meanings[1]!.id });
+
+  // Réouverture : idempotent, pas de nouvelle sauvegarde ni de doublon.
+  await openDb(dbPath);
+  assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1);
+  assert.equal(listWords(db).find((w) => w.korean === '사과')!.meanings.length, 2);
+});
+
 test('catégorie grammaticale par signification : création, édition en place, quiz', async () => {
   const db = await openDb(':memory:');
   const created = createWord(db, {

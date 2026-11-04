@@ -6,14 +6,13 @@ interface MeaningDraft {
   id?: number;
   translation: string;
   pos: string;
-  alts: string;
   hint: string;
   context: string;
   example_ko: string;
   example_fr: string;
 }
 
-const emptyMeaning = (): MeaningDraft => ({ translation: '', pos: '', alts: '', hint: '', context: '', example_ko: '', example_fr: '' });
+const emptyMeaning = (): MeaningDraft => ({ translation: '', pos: '', hint: '', context: '', example_ko: '', example_fr: '' });
 
 export function WordForm(props: { initial: Word | null; onDone: () => void; onCancel: () => void }): JSX.Element {
   const { initial, onDone, onCancel } = props;
@@ -26,7 +25,6 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
           id: m.id,
           translation: m.translation,
           pos: m.pos ?? '',
-          alts: m.alts.join(', '),
           hint: m.hint ?? '',
           context: m.context ?? '',
           example_ko: m.example_ko ?? '',
@@ -53,10 +51,6 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
         ...(m.id ? { id: m.id } : {}),
         translation: m.translation,
         pos: m.pos.trim() || null,
-        alts: m.alts
-          .split(',')
-          .map((a) => a.trim())
-          .filter((a) => a.length > 0),
         hint: m.hint || null,
         context: m.context || null,
         example_ko: m.example_ko || null,
@@ -110,10 +104,6 @@ export function WordForm(props: { initial: Word | null; onDone: () => void; onCa
               </label>
             </div>
             <div className="form-row">
-              <label>
-                Autres traductions (séparées par des virgules)
-                <input value={m.alts} onChange={(e) => setMeaning(i, { alts: e.target.value })} placeholder="fruit, pomme verte" />
-              </label>
               <label>
                 Indice
                 <input value={m.hint} onChange={(e) => setMeaning(i, { hint: e.target.value })} placeholder="Fruit rond" />

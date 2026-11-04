@@ -114,7 +114,6 @@ export function selectMixedQuestions(
 export interface MeaningForCheck {
   id: number;
   translation: string;
-  alts: string[];
 }
 
 export interface CheckResult {
@@ -124,14 +123,13 @@ export interface CheckResult {
 }
 
 /**
- * Validation stricte : la réponse doit égaler (normalisée) la traduction
- * principale ou une alternative de la signification cible, ou d'une autre
- * signification du même mot (comptée correcte, PRD §4.2 multi-significations).
+ * Validation stricte : la réponse doit égaler (normalisée) la traduction de
+ * la signification cible ou d'une autre signification du même mot (comptée
+ * correcte, PRD §4.2 multi-significations).
  */
 export function checkAnswer(answer: string, target: MeaningForCheck, wordMeanings: MeaningForCheck[]): CheckResult {
-  const matches = (m: MeaningForCheck) => frMatch(answer, m.translation) || m.alts.some((a) => frMatch(answer, a));
-  if (matches(target)) return { correct: true, matchedMeaningId: target.id };
-  const other = wordMeanings.find((m) => m.id !== target.id && matches(m));
+  if (frMatch(answer, target.translation)) return { correct: true, matchedMeaningId: target.id };
+  const other = wordMeanings.find((m) => m.id !== target.id && frMatch(answer, m.translation));
   if (other) return { correct: true, matchedMeaningId: other.id };
   return { correct: false, matchedMeaningId: null };
 }

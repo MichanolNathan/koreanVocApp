@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { normalizeFr } from './normalize.ts';
 import { dirname } from 'node:path';
 import initSqlJs from 'sql.js';
 
@@ -60,12 +61,9 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Autres traductions acceptées pour une signification (PRD v0.2 §2.1)
-  CREATE TABLE IF NOT EXISTS meaning_translations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    meaning_id INTEGER NOT NULL REFERENCES meanings(id) ON DELETE CASCADE,
-    text TEXT NOT NULL
-  );
+  -- (v0.5) La table meaning_translations (« autres traductions » par
+  -- signification) a été supprimée : chaque ancienne traduction alternative
+  -- est devenue une signification à part entière du même mot.
 
   -- Bibliothèque de phrases intégrée (itération 2, PRD §4) : identifiants
   -- stables fournis par la bibliothèque, jamais auto-générés.
@@ -167,6 +165,19 @@ function scalar(raw: RawDatabase, sql: string): number {
   return Number(row?.[0] ?? 0);
 }
 
+function tableExists(raw: RawDatabase, name: string): boolean {
+  const res = raw.exec(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${name}'`) as unknown[];
+  return res.length > 0;
+}
+
+function allRows(raw: RawDatabase, sql: string): Record<string, unknown>[] {
+  const stmt = raw.prepare(sql);
+  const rows: Record<string, unknown>[] = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
 /** Colonnes d'une table — détection des migrations via PRAGMA table_info. */
 function tableColumns(raw: RawDatabase, table: string): Set<string> {
   const res = raw.exec(`PRAGMA table_info(${table})`) as unknown as { columns: string[]; values: unknown[][] }[];
@@ -199,8 +210,47 @@ function backupDbFile(path: string): string {
  *   sans pos. Les clés étrangères sont désactivées pendant la reconstruction
  *   (le DROP d'une table parente déclencherait sinon les ON DELETE CASCADE).
  *
+ * - v0.5 : le champ « autres traductions » (meaning_translations) dupliquait
+ *   la multi-signification. Chaque traduction alternative devient une
+ *   signification du même mot — catégorie et contexte hérités, pas l'indice
+ *   (il décrivait la traduction principale et pourrait divulguer la réponse).
+ *   Les doublons (traduction déjà portée par le mot) sont écartés, puis la
+ *   table est supprimée.
+ *
  * Le fichier base est sauvegardé avant toute migration destructrice.
  */
+function convertLegacyAlts(raw: RawDatabase): number {
+  const alts = allRows(
+    raw,
+    `SELECT t.meaning_id AS meaning_id, t.text AS text, m.word_id AS word_id, m.pos AS pos, m.context AS context
+     FROM meaning_translations t JOIN meanings m ON m.id = t.meaning_id
+     ORDER BY m.word_id, m.id, t.id`
+  );
+  const known = new Map<number, Set<string>>();
+  for (const m of allRows(raw, 'SELECT word_id, translation FROM meanings')) {
+    const set = known.get(Number(m.word_id)) ?? new Set<string>();
+    set.add(normalizeFr(String(m.translation)));
+    known.set(Number(m.word_id), set);
+  }
+  const ins = raw.prepare('INSERT INTO meanings (word_id, translation, pos, context) VALUES (?, ?, ?, ?)');
+  let converted = 0;
+  for (const a of alts) {
+    const wordId = Number(a.word_id);
+    const text = String(a.text).trim();
+    const seen = known.get(wordId)!;
+    const key = normalizeFr(text);
+    if (key.length === 0 || seen.has(key)) continue;
+    ins.bind([wordId, text, a.pos ?? null, a.context ?? null]);
+    ins.step();
+    ins.reset();
+    seen.add(key);
+    converted++;
+  }
+  ins.free();
+  raw.exec('DROP TABLE meaning_translations');
+  return converted;
+}
+
 function migrate(raw: RawDatabase, path: string): void {
   const sessionCols = tableColumns(raw, 'sessions');
   if (!sessionCols.has('source_filter')) raw.exec('ALTER TABLE sessions ADD COLUMN source_filter TEXT');
@@ -208,8 +258,10 @@ function migrate(raw: RawDatabase, path: string): void {
 
   const hasKindCols = tableColumns(raw, 'questions').has('kind') && tableColumns(raw, 'attempt_log').has('kind');
   const hasMeaningPos = tableColumns(raw, 'meanings').has('pos');
-  if (hasKindCols && hasMeaningPos) return;
-  if (path !== ':memory:') {
+  const hasLegacyAlts = tableExists(raw, 'meaning_translations');
+  const legacyAltCount = hasLegacyAlts ? scalar(raw, 'SELECT COUNT(*) FROM meaning_translations') : 0;
+  if (hasKindCols && hasMeaningPos && !hasLegacyAlts) return;
+  if (path !== ':memory:' && (!hasKindCols || !hasMeaningPos || legacyAltCount > 0)) {
     console.warn(`Sauvegarde de la base avant migration : ${backupDbFile(path)}`);
   }
 
@@ -276,6 +328,13 @@ function migrate(raw: RawDatabase, path: string): void {
       DELETE FROM sqlite_sequence WHERE name = 'words_v04';
     `);
     raw.exec('PRAGMA foreign_keys = ON');
+    raw.exec('PRAGMA foreign_keys = ON');
+  }
+
+  // Après v0.4 : meanings possède pos, hérité par les significations créées.
+  if (hasLegacyAlts) {
+    const converted = convertLegacyAlts(raw);
+    if (converted > 0) console.warn(`Migration v0.5 : ${converted} autres traductions converties en significations.`);
   }
 }
 

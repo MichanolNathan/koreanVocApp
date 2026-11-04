@@ -184,10 +184,6 @@ button.danger {
   font-style: italic;
 }
 
-.meaning-alt {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
 
 .meaning-detail {
   color: var(--muted);

@@ -13,7 +13,7 @@ function normalizeSearch(value: string): string {
 function matchesQuery(w: Word, query: string): boolean {
   const q = normalizeSearch(query);
   if (q.length === 0) return true;
-  const fields = [w.korean, w.romanization ?? '', ...w.meanings.flatMap((m) => [m.translation, ...m.alts])];
+  const fields = [w.korean, w.romanization ?? '', ...w.meanings.map((m) => m.translation)];
   return fields.some((f) => normalizeSearch(f).includes(q));
 }
 
@@ -147,7 +147,6 @@ export function Dictionary(): JSX.Element {
                   <div className="meaning-main">
                     <span className="meaning-translation">{m.translation}</span>
                     {m.pos && <span className="meaning-pos">{m.pos}</span>}
-                    {m.alts.length > 0 && <span className="meaning-alt">aussi : {m.alts.join(', ')}</span>}
                     <span className={`badge badge-${m.level}`}>{LEVEL_LABELS[m.level]}</span>
                   </div>
                   {m.context && <p className="meaning-detail">Contexte : {m.context}</p>}
