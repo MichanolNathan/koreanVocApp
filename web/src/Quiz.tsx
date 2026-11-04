@@ -4,7 +4,14 @@ import type { AnswerFeedback, SessionCreated, SessionKind, SessionQuestion, Sess
 
 type Phase =
   | { step: 'setup' }
-  | { step: 'run'; session: SessionCreated; index: number; feedback: AnswerFeedback | null; hint: string | null }
+  | {
+      step: 'run';
+      session: SessionCreated;
+      index: number;
+      feedback: AnswerFeedback | null;
+      hint: string | null;
+      hideRomanization: boolean;
+    }
   | { step: 'results'; sessionId: number };
 
 const KINDS: Array<{ value: SessionKind; label: string; description: string }> = [
@@ -20,6 +27,24 @@ const MODES: Array<{ value: string; label: string; description: string }> = [
   { value: 'mixed', label: 'Priorité faibles', description: '70 % difficultés + 30 % acquis' },
   { value: 'context', label: 'Par contexte', description: 'Un contexte ou thème précis' },
 ];
+
+const HIDE_ROMANIZATION_KEY = 'quiz.hideRomanization';
+
+function readHideRomanizationPref(): boolean {
+  try {
+    return localStorage.getItem(HIDE_ROMANIZATION_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveHideRomanizationPref(hidden: boolean): void {
+  try {
+    localStorage.setItem(HIDE_ROMANIZATION_KEY, hidden ? '1' : '0');
+  } catch {
+    /* stockage indisponible — préférence non persistée */
+  }
+}
 
 export function Quiz(): JSX.Element {
   const [phase, setPhase] = useState<Phase>({ step: 'setup' });
@@ -47,14 +72,20 @@ export function Quiz(): JSX.Element {
           </p>
         )}
       </div>
-      {phase.step === 'setup' && <QuizSetup onStart={(s) => setPhase({ step: 'run', session: s, index: 0, feedback: null, hint: null })} />}
+      {phase.step === 'setup' && (
+        <QuizSetup
+          onStart={(s, hideRomanization) =>
+            setPhase({ step: 'run', session: s, index: 0, feedback: null, hint: null, hideRomanization })
+          }
+        />
+      )}
       {phase.step === 'run' && <QuizRunner phase={phase} setPhase={setPhase} setError={setError} />}
       {phase.step === 'results' && results && <ResultsView results={results} onRestart={() => { setResults(null); setPhase({ step: 'setup' }); }} />}
     </>
   );
 }
 
-function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element {
+function QuizSetup(props: { onStart: (s: SessionCreated, hideRomanization: boolean) => void }): JSX.Element {
   const { onStart } = props;
   const [kind, setKind] = useState<SessionKind>('vocab');
   const [mode, setMode] = useState('standard');
@@ -64,6 +95,7 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
   const [source, setSource] = useState<'all' | WordSource>('all');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hideRomanization, setHideRomanization] = useState(readHideRomanizationPref);
 
   useEffect(() => {
     api
@@ -88,7 +120,8 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
     setError(null);
     try {
       onStart(
-        await api.createSession(kind, mode, mode === 'context' ? context : undefined, source === 'all' ? undefined : source)
+        await api.createSession(kind, mode, mode === 'context' ? context : undefined, source === 'all' ? undefined : source),
+        hideRomanization
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
@@ -167,6 +200,23 @@ function QuizSetup(props: { onStart: (s: SessionCreated) => void }): JSX.Element
             </select>
           </label>
         )}
+        <fieldset>
+          <legend>Options</legend>
+          <label className="radio-line">
+            <input
+              type="checkbox"
+              checked={hideRomanization}
+              onChange={(e) => {
+                setHideRomanization(e.target.checked);
+                saveHideRomanizationPref(e.target.checked);
+              }}
+            />
+            <span>
+              <strong>Cacher la romanisation par défaut</strong> — masquée sous les mots et phrases, révélable avec un
+              bouton pendant le quiz (comme les indices). La préférence est mémorisée.
+            </span>
+          </label>
+        </fieldset>
         {error && (
           <p className="status status-error" role="alert">
             {error}
@@ -190,6 +240,7 @@ function QuizRunner(props: {
   const question: SessionQuestion | undefined = session.questions[index];
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
+  const [romanizationShown, setRomanizationShown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -228,12 +279,14 @@ function QuizRunner(props: {
     if (index + 1 >= session.questions.length) {
       setPhase({ step: 'results', sessionId: session.id });
     } else {
-      setPhase({ step: 'run', session, index: index + 1, feedback: null, hint: null });
+      setPhase({ ...phase, index: index + 1, feedback: null, hint: null });
       setAnswer('');
+      setRomanizationShown(false);
     }
   };
 
   const isPhrase = question.kind === 'phrase';
+  const romanizationVisible = !phase.hideRomanization || romanizationShown || feedback !== null;
 
   return (
     <section className="card quiz-card" aria-label={`Question ${index + 1} sur ${session.questions.length}`}>
@@ -244,8 +297,8 @@ function QuizRunner(props: {
         {question.korean}
       </p>
       <p className="word-meta">
-        {question.romanization}
-        {question.romanization && question.pos ? ' · ' : ''}
+        {romanizationVisible && question.romanization}
+        {romanizationVisible && question.romanization && question.pos ? ' · ' : ''}
         {question.pos}
       </p>
 
@@ -289,6 +342,16 @@ function QuizRunner(props: {
             >
               {hint !== null ? 'Indice utilisé' : 'Indice'}
             </button>
+            {phase.hideRomanization && question.romanization && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setRomanizationShown(true)}
+                disabled={romanizationShown}
+              >
+                {romanizationShown ? 'Romanisation affichée' : 'Romanisation'}
+              </button>
+            )}
           </div>
         </form>
       )}
