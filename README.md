@@ -41,6 +41,16 @@ Cycle de release :
    ([`.github/workflows/release-build.yml`](.github/workflows/release-build.yml))
    build les images, rejoue le smoke test puis publie sur GHCR : `:latest` à la
    fusion, `:X.Y.Z` au push du tag `vX.Y.Z`.
+4. Après la publication des images : **vérifier l'intégrité des branches**.
+   La fusion squash sur `main` laisse `develop` diverger (ses commits ne sont
+   pas ceux du squash) ; si les prochains commits touchent des régions
+   modifiées depuis la base commune, la PR suivante apparaît *dirty*
+   (conflit 3-way alors même que le contenu final est correct — vu sur
+   v1.4.1). Vérification : `git fetch` puis
+   `git merge-tree --write-tree origin/main origin/develop` — un code de
+   sortie non nul (conflit) impose de merger `main` dans `develop`, résoudre
+   en gardant le contenu de `develop` si tout y est déjà, pousser, puis
+   réaligner `test` (`git push origin develop:refs/heads/test`).
 
 
 ## Architecture
