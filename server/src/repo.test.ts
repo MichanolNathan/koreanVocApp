@@ -10,6 +10,7 @@ import { openDb, type DB } from './db.ts';
 import { loadPhraseLibrary } from './phrase-library.ts';
 import { loadOfficialDictionary, OFFICIAL_DICTIONARY } from './official-dictionary.ts';
 import {
+  ConflictError,
   answerQuestion,
   computeStats,
   createSession,
@@ -235,8 +236,12 @@ test('migration v0.5 : les autres traductions deviennent des significations du m
 
   const db = await openDb(dbPath);
   assert.equal(readdirSync(dir).filter((f) => f.startsWith('app.db.backup-')).length, 1, 'sauvegarde avant conversion');
+  // sql.js tape .get() en Record<string, unknown> : la forme est certaine (COUNT AS n).
+  const leftover = db
+    .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'meaning_translations'")
+    .get() as { n: number };
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'meaning_translations'").get()!.n,
+    leftover.n,
     0,
     'la table meaning_translations doit disparaître'
   );
@@ -298,6 +303,27 @@ test('catégorie grammaticale par signification : création, édition en place, 
   loadOfficialDictionary(db);
   const hoesawon = listWords(db, 'official').find((w) => w.korean === '회사원')!;
   assert.equal(hoesawon.meanings[0]!.pos, 'nom');
+});
+
+test('édition : renommer vers un mot existant est refusé (409), pas vers soi-même ou un mot libre', async () => {
+  const db = await openDb(':memory:');
+  const orange = createWord(db, { korean: '오렌지', meanings: [{ translation: 'Orange' }] });
+  const typo = createWord(db, { korean: '오랜지', meanings: [{ translation: 'Orange', hint: 'Aussi une couleur' }] });
+
+  // Cas rapporté : correction du mot 163 (오랜지) vers 오렌지 déjà pris → conflit.
+  assert.throws(
+    () => replaceWord(db, typo.id, { korean: '오렌지', meanings: [{ translation: 'Orange' }] }),
+    ConflictError
+  );
+
+  // Korean inchangé sur le même mot : pas d'auto-conflit.
+  const kept = replaceWord(db, typo.id, { korean: '오랜지', meanings: [{ translation: 'Orange (coquille)' }] })!;
+  assert.equal(kept.korean, '오랜지');
+
+  // Renommage vers un korean libre : accepté, id stable.
+  const renamed = replaceWord(db, typo.id, { korean: '오렌지주스', meanings: [{ translation: "jus d'orange" }] })!;
+  assert.equal(renamed.id, typo.id);
+  assert.notEqual(renamed.id, orange.id);
 });
 
 // --- Dictionnaire officiel livré (v1.1.1) ------------------------------------
