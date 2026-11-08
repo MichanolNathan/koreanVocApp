@@ -222,6 +222,12 @@ export function createWord(db: DB, input: WordInput): WordDTO {
 export function replaceWord(db: DB, id: number, input: WordInput): WordDTO | null {
   const current = wordById(db, id);
   if (!current) return null;
+  // Doublon sur un autre mot : même refus propre que la création (409),
+  // au lieu de laisser SQLite lever son UNIQUE en erreur serveur.
+  const existing = db.prepare('SELECT id FROM words WHERE korean = ? AND id != ?').get(input.korean, id) as
+    | { id: number }
+    | undefined;
+  if (existing) throw new ConflictError(`Le mot « ${input.korean} » existe déjà.`);
   db.transaction(() => {
     db.prepare('UPDATE words SET korean = ?, romanization = ?, source = ? WHERE id = ?').run(
       input.korean,
