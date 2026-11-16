@@ -147,6 +147,15 @@ const SCHEMA = `
     korean TEXT PRIMARY KEY,
     added_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- (v0.6) Registre des phrases livrées par la bibliothèque intégrée :
+  -- chaque id inséré par le chargeur y est consigné. Une phrase livrée
+  -- n'est plus jamais retouchée au démarrage — les éditions de
+  -- l'utilisateur priment (même garantie que shipped_words pour les mots).
+  CREATE TABLE IF NOT EXISTS shipped_phrases (
+    phrase_id INTEGER PRIMARY KEY,
+    added_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 const INDEXES = `

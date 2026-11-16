@@ -1947,30 +1947,31 @@ export const PHRASE_LIBRARY: PhraseSeed[] = [
 ];
 
 /**
- * Charge la bibliothèque en base : upsert par identifiant stable (les mises à
- * jour de l'application enrichissent la bibliothèque sans perdre l'historique,
- * PRD §4.1), puis recalcul des liens phrase ↔ mots du dictionnaire (§4.4).
- * Les liens servent uniquement à l'analyse : ils ne modifient jamais la
- * maîtrise des mots (§7.2). Retourne le nombre de phrases chargées.
+ * Charge la bibliothèque en base : insère uniquement les phrases **jamais
+ * livrées** (registre shipped_phrases) — les mises à jour de l'application
+ * enrichissent la bibliothèque sans perdre l'historique (PRD §4.1) ni écraser
+ * les éditions de l'utilisateur (v0.6). Les bases existantes sont
+ * auto-enregistrées à leur première ouverture : toutes leurs phrases
+ * proviennent de la bibliothèque. Puis recalcule les liens phrase ↔ mots du
+ * dictionnaire (§4.4) depuis les lignes en base — le coréen édité par
+ * l'utilisateur est pris en compte. Les liens servent uniquement à l'analyse :
+ * ils ne modifient jamais la maîtrise des mots (§7.2). Retourne la taille de
+ * la bibliothèque.
  */
 export function loadPhraseLibrary(db: DB): number {
   return db.transaction(() => {
-    const upsert = db.prepare(
-      `INSERT INTO phrases (id, korean, translation, romanization, difficulty, hint, theme, grammar_point)
-       VALUES (?, ?, ?, ?, 'beginner', ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         korean = excluded.korean,
-         translation = excluded.translation,
-         romanization = excluded.romanization,
-         hint = excluded.hint,
-         theme = excluded.theme,
-         grammar_point = excluded.grammar_point`
+    db.prepare('INSERT OR IGNORE INTO shipped_phrases (phrase_id) SELECT id FROM phrases').run();
+    const shipped = new Set(
+      (db.prepare('SELECT phrase_id FROM shipped_phrases').all() as { phrase_id: number }[]).map((r) => r.phrase_id)
     );
-    const delAlts = db.prepare('DELETE FROM phrase_translations WHERE phrase_id = ?');
+    const ins = db.prepare(
+      `INSERT INTO phrases (id, korean, translation, romanization, difficulty, hint, theme, grammar_point)
+       VALUES (?, ?, ?, ?, 'beginner', ?, ?, ?)`
+    );
     const insAlt = db.prepare('INSERT INTO phrase_translations (phrase_id, text) VALUES (?, ?)');
     for (const p of PHRASE_LIBRARY) {
-      upsert.run(p.id, p.korean, p.translation, p.romanization ?? null, p.hint ?? null, p.theme, p.grammarPoint ?? null);
-      delAlts.run(p.id);
+      if (shipped.has(p.id)) continue;
+      ins.run(p.id, p.korean, p.translation, p.romanization ?? null, p.hint ?? null, p.theme, p.grammarPoint ?? null);
       for (const alt of p.alts ?? []) insAlt.run(p.id, alt);
     }
 
@@ -1979,8 +1980,9 @@ export function loadPhraseLibrary(db: DB): number {
     // correspondent pas — les liens sont best-effort, jamais exhaustifs.
     db.prepare('DELETE FROM phrase_vocab').run();
     const words = db.prepare('SELECT id, korean FROM words').all() as { id: number; korean: string }[];
+    const rows = db.prepare('SELECT id, korean FROM phrases').all() as { id: number; korean: string }[];
     const insLink = db.prepare('INSERT OR IGNORE INTO phrase_vocab (phrase_id, word_id) VALUES (?, ?)');
-    for (const p of PHRASE_LIBRARY) {
+    for (const p of rows) {
       for (const w of words) {
         if (p.korean.includes(w.korean)) insLink.run(p.id, w.id);
       }

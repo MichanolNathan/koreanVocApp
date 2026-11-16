@@ -8,6 +8,7 @@ import { loadOfficialDictionary } from './official-dictionary.ts';
 import { sessionsRouter } from './routes/sessions.ts';
 import { statsRouter } from './routes/stats.ts';
 import { apiErrorHandler, wordsRouter } from './routes/words.ts';
+import { phrasesRouter } from './routes/phrases.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH ?? join(here, '..', 'data', 'app.db');
@@ -18,7 +19,7 @@ const officialCount = loadOfficialDictionary(db);
 const app = express();
 app.use(express.json());
 app.use('/api/words', wordsRouter(db));
-app.use('/api/sessions', sessionsRouter(db));
+app.use('/api/phrases', phrasesRouter(db));
 app.use('/api/stats', statsRouter(db));
 
 // Production : un seul processus sert l'API et le build statique du client.

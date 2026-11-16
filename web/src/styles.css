@@ -426,6 +426,11 @@ a:focus-visible {
   color: var(--muted);
 }
 
+.badge-theme {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 select {
   border: 1px solid var(--border);
   border-radius: 8px;
