@@ -10,7 +10,7 @@ Cadrage fonctionnel : [`docs/PRD.md`](docs/PRD.md) (V1) et [`docs/PRD_iteration_
 * **Recherche dans le dictionnaire** : saisie en coréen (사과), en français (pomme) ou en romanisation (sagwa) — insensible à la casse, aux accents et à la composition coréenne (jamo/syllabes), combinable avec le filtre par dictionnaire.
 - **Dictionnaire officiel intégré** : 44 mots et expressions débutant livrés avec l'application (issus d'un deck Anki, traduits en français), disponibles dès l'installation et enrichis par les mises à jour. Les éditions et suppressions de l'utilisateur priment : le chargeur n'insère que des mots jamais livrés (registre interne `shipped_words`).
 - **Quiz de vocabulaire** : 15 questions (ou moins si le dictionnaire est petit), une réponse par question, indice sur demande, validation stricte normalisée côté serveur (casse, accents, articles, pluriel ; une traduction d'une *autre* signification du mot reste correcte).
-- **Quiz de phrases** (itération 2) : traduction de phrases coréennes débutantes (repère A1) issues d'une **bibliothèque de 80 phrases intégrée** — 7 thèmes du quotidien, aucune connexion nécessaire, aucune édition manuelle. Indice par phrase, traductions alternatives acceptées.
+- **Quiz de phrases** (itération 2) : traduction de phrases coréennes débutantes (repère A1) issues d'une **bibliothèque de 200 phrases intégrée** — 7 thèmes du quotidien, aucune connexion nécessaire, aucune édition manuelle. Indice par phrase, traductions alternatives acceptées.
 - **Quiz mixte** : 15 questions — exactement 8 de vocabulaire et 7 de phrases, ordre mélangé — avec résultats ventilés par catégorie.
 - **Cacher la romanisation** (option de quiz) : préférence mémorisée dans le navigateur — la romanisation est masquée sous le mot ou la phrase, révélable par un bouton comme un indice (sans impact sur la maîtrise), et affichée automatiquement dans le corrigé.
 - **Maîtrise EWMA** (λ = 0,6 sur les 10 dernières tentatives — sans indice 1,0 · avec 0,6 · échec 0) par signification **et** par phrase, indépendamment l'une de l'autre : rater une phrase ne dégrade pas les mots qu'elle contient. Niveaux : Maîtrisé / À renforcer / Non maîtrisé / Non évalué ; une erreur isolée ne dégrade pas.
@@ -41,6 +41,16 @@ Cycle de release :
    ([`.github/workflows/release-build.yml`](.github/workflows/release-build.yml))
    build les images, rejoue le smoke test puis publie sur GHCR : `:latest` à la
    fusion, `:X.Y.Z` au push du tag `vX.Y.Z`.
+4. Après la publication des images : **vérifier l'intégrité des branches**.
+   La fusion squash sur `main` laisse `develop` diverger (ses commits ne sont
+   pas ceux du squash) ; si les prochains commits touchent des régions
+   modifiées depuis la base commune, la PR suivante apparaît *dirty*
+   (conflit 3-way alors même que le contenu final est correct — vu sur
+   v1.4.1). Vérification : `git fetch` puis
+   `git merge-tree --write-tree origin/main origin/develop` — un code de
+   sortie non nul (conflit) impose de merger `main` dans `develop`, résoudre
+   en gardant le contenu de `develop` si tout y est déjà, pousser, puis
+   réaligner `test` (`git push origin develop:refs/heads/test`).
 
 
 ## Architecture

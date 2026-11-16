@@ -153,7 +153,7 @@ test('stats : maîtrise des phrases indépendante des mots', async () => {
   ins.run();
   ins.run();
   const stats = computeStats(db);
-  assert.equal(stats.phrases.total, 80);
+  assert.equal(stats.phrases.total, 200);
   assert.ok(stats.phrases.weakPhrases.some((p) => p.phraseId === 1));
   assert.equal(stats.byLevel.new, stats.totalMeanings); // aucun mot évalué
   assert.equal(stats.phrases.byLevel.weak, 1);
