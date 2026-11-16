@@ -80,6 +80,20 @@ id="$(printf '%s' "$created" | grep -o '"id":[0-9]\+' | head -1 | cut -d: -f2)"
 curl -fsS "$base/api/words/$id" | grep -q '테스트' || fail "GET /api/words/$id ne contient pas le mot créé"
 pass "POST + GET /api/words/$id -> mot créé relu"
 
+# 5ab. Bibliothèque de phrases : consultation et édition (v0.6).
+nph="$(curl -fsS "$base/api/phrases" | grep -o '"id":[0-9]\+' | wc -l | tr -d ' ')"
+[ "$nph" -ge 200 ] || fail "bibliothèque de phrases : $nph phrases, au moins 200 attendues"
+phrase_payload="smoke-phrase.$$"
+cat >"$phrase_payload" <<'EOF'
+{"korean":"안녕하세요. 만나서 반가워요.","translation":"Bonjour, ravi de vous rencontrer.","romanization":"annyeonghaseyo. mannaseo bangawoyo.","hint":"만나서 = de vous rencontrer · 반가워요 = ravi","theme":"Salutations et présentations","alts":["Bonjour, enchanté"]}
+EOF
+code="$(curl -s -w '%{http_code}' -X PUT "$base/api/phrases/1" -H 'Content-Type: application/json' \
+  --data-binary @"$phrase_payload" | tail -c 3)"
+rm -f "$phrase_payload"
+[ "$code" = "200" ] || fail "PUT /api/phrases/1 -> HTTP $code, 200 attendu"
+curl -fsS "$base/api/phrases/1" | grep -q 'Bonjour, enchanté' || fail "GET /api/phrases/1 ne contient pas l'édition"
+pass "bibliothèque : $nph phrases, édition PUT+GET /api/phrases/1 (200)"
+
 # 5b. Quiz de phrases (itération 2) : bibliothèque locale, 15 questions,
 #     aucune traduction attendue exposée avant la réponse.
 session="$(curl -fsS -X POST "$base/api/sessions" -H 'Content-Type: application/json' -d '{"kind":"phrases","mode":"standard"}')"

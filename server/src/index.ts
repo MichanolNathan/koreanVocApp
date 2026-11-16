@@ -19,6 +19,7 @@ const officialCount = loadOfficialDictionary(db);
 const app = express();
 app.use(express.json());
 app.use('/api/words', wordsRouter(db));
+app.use('/api/sessions', sessionsRouter(db));
 app.use('/api/phrases', phrasesRouter(db));
 app.use('/api/stats', statsRouter(db));
 
