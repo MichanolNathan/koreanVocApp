@@ -258,6 +258,102 @@ export function deleteWord(db: DB, id: number): boolean {
   return db.prepare('DELETE FROM words WHERE id = ?').run(id).changes > 0;
 }
 
+export interface PhraseDTO {
+  id: number;
+  korean: string;
+  translation: string;
+  romanization: string | null;
+  hint: string | null;
+  theme: string | null;
+  grammarPoint: string | null;
+  alts: string[];
+}
+
+export interface PhraseInput {
+  korean: string;
+  translation: string;
+  romanization?: string | null;
+  hint?: string | null;
+  theme?: string | null;
+  grammarPoint?: string | null;
+  alts: string[];
+}
+
+
+function altsByPhrase(db: DB): Map<number, string[]> {
+  const alts = new Map<number, string[]>();
+  const rows = db.prepare('SELECT phrase_id, text FROM phrase_translations ORDER BY id').all() as {
+    phrase_id: number;
+    text: string;
+  }[];
+  for (const r of rows) {
+    const list = alts.get(r.phrase_id);
+    if (list) list.push(r.text);
+    else alts.set(r.phrase_id, [r.text]);
+  }
+  return alts;
+}
+
+/** Bibliothèque de phrases complète (v0.6 : consultation/édition). */
+export function listPhrases(db: DB): PhraseDTO[] {
+  const rows = db.prepare('SELECT * FROM phrases ORDER BY id').all() as PhraseRow[];
+  const alts = altsByPhrase(db);
+  return rows.map((r) => ({
+    id: r.id,
+    korean: r.korean,
+    translation: r.translation,
+    romanization: r.romanization,
+    hint: r.hint,
+    theme: r.theme,
+    grammarPoint: r.grammar_point,
+    alts: alts.get(r.id) ?? [],
+  }));
+}
+
+export function getPhrase(db: DB, id: number): PhraseDTO | null {
+  const row = db.prepare('SELECT * FROM phrases WHERE id = ?').get(id) as PhraseRow | undefined;
+  if (!row) return null;
+  const alts = altsByPhrase(db).get(id) ?? [];
+  return { id: row.id, korean: row.korean, translation: row.translation, romanization: row.romanization, hint: row.hint, theme: row.theme, grammarPoint: row.grammar_point, alts };
+}
+
+/**
+ * Édition d'une phrase (remplacement complet, id stable : la maîtrise et
+ * l'historique sont conservés). Le chargeur de bibliothèque ne retouchera
+ * plus cette phrase (registre shipped_phrases).
+ */
+export function replacePhrase(db: DB, id: number, input: PhraseInput): PhraseDTO | null {
+  if (!db.prepare('SELECT id FROM phrases WHERE id = ?').get(id)) return null;
+  const dup = db.prepare('SELECT id FROM phrases WHERE korean = ? AND id <> ?').get(input.korean, id) as
+    | { id: number }
+    | undefined;
+  if (dup) throw new ConflictError(`La phrase « ${input.korean} » existe déjà (n° ${dup.id}).`);
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE phrases SET korean = ?, translation = ?, romanization = ?, hint = ?, theme = ?, grammar_point = ? WHERE id = ?'
+    ).run(
+      input.korean,
+      input.translation,
+      input.romanization ?? null,
+      input.hint ?? null,
+      input.theme ?? null,
+      input.grammarPoint ?? null,
+      id
+    );
+    db.prepare('DELETE FROM phrase_translations WHERE phrase_id = ?').run(id);
+    const insAlt = db.prepare('INSERT INTO phrase_translations (phrase_id, text) VALUES (?, ?)');
+    for (const alt of input.alts) insAlt.run(id, alt);
+    // Liens répercutés sur le coréen édité (même règle best-effort que le chargeur).
+    db.prepare('DELETE FROM phrase_vocab WHERE phrase_id = ?').run(id);
+    const words = db.prepare('SELECT id, korean FROM words').all() as { id: number; korean: string }[];
+    const insLink = db.prepare('INSERT OR IGNORE INTO phrase_vocab (phrase_id, word_id) VALUES (?, ?)');
+    for (const w of words) {
+      if (input.korean.includes(w.korean)) insLink.run(id, w.id);
+    }
+  });
+  return getPhrase(db, id);
+}
+
 // ---------------------------------------------------------------------------
 // Sessions de quiz
 // ---------------------------------------------------------------------------

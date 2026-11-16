@@ -44,6 +44,17 @@ export interface Word {
   meanings: Meaning[];
 }
 
+export interface Phrase {
+  id: number;
+  korean: string;
+  translation: string;
+  romanization: string | null;
+  hint: string | null;
+  theme: string | null;
+  grammarPoint: string | null;
+  alts: string[];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -176,6 +187,8 @@ export const api = {
   createWord: (w: unknown): Promise<Word> => req('/words', 'POST', w),
   updateWord: (id: number, w: unknown): Promise<Word> => req(`/words/${id}`, 'PUT', w),
   deleteWord: (id: number): Promise<void> => req(`/words/${id}`, 'DELETE'),
+  listPhrases: (): Promise<Phrase[]> => req('/phrases', 'GET'),
+  updatePhrase: (id: number, p: unknown): Promise<Phrase> => req(`/phrases/${id}`, 'PUT', p),
   stats: (): Promise<Stats> => req('/stats', 'GET'),
   createSession: (kind: SessionKind, mode: string, context?: string, source?: WordSource): Promise<SessionCreated> =>
     req('/sessions', 'POST', { kind, mode, ...(context ? { context } : {}), ...(source ? { source } : {}) }),

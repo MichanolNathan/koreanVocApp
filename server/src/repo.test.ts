@@ -17,9 +17,12 @@ import {
   createWord,
   deleteWord,
   getHint,
+  getPhrase,
   getResults,
   getSessionView,
+  listPhrases,
   listWords,
+  replacePhrase,
   replaceWord,
 } from './repo.ts';
 import { checkAnswer, checkPhraseAnswer, QUIZ_LENGTH } from './engine.ts';
@@ -48,6 +51,52 @@ test('bibliothèque : chargement idempotent et liens vocabulaire', async () => {
     .prepare("SELECT COUNT(*) AS n FROM phrase_vocab pv JOIN phrases p ON p.id = pv.phrase_id WHERE p.korean LIKE '%사과%'")
     .get() as { n: number };
   assert.ok(link.n >= 1);
+});
+
+test('phrases : édition conservée au rechargement (registre shipped_phrases), liens recalculés', async () => {
+  const db = await openDb(':memory:');
+  loadPhraseLibrary(db);
+  createWord(db, { korean: '커피', meanings: [{ translation: 'café' }] });
+
+  const edited = replacePhrase(db, 130, {
+    korean: '커피가 필요해요.',
+    translation: 'J’ai besoin de café.',
+    romanization: 'keopiga piryohaeyo.',
+    hint: '필요해요 = il faut',
+    theme: 'Nourriture et boissons',
+    alts: ['Il me faut du café'],
+  });
+  assert.equal(edited!.translation, 'J’ai besoin de café.');
+  assert.deepEqual(edited!.alts, ['Il me faut du café']);
+
+  // Rechargement (redémarrage simulé) : l'édition prime, rien n'est écrasé.
+  loadPhraseLibrary(db);
+  const row = getPhrase(db, 130)!;
+  assert.equal(row.korean, '커피가 필요해요.');
+  assert.equal(row.translation, 'J’ai besoin de café.');
+  assert.deepEqual(row.alts, ['Il me faut du café']);
+
+  // Le lien phrase ↔ mot suit le coréen édité.
+  const link = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM phrase_vocab v JOIN words w ON w.id = v.word_id
+       WHERE v.phrase_id = 130 AND w.korean = '커피'`
+    )
+    .get() as { n: number };
+  assert.equal(link.n, 1);
+
+  // Une phrase retirée de la base ET du registre est réinsérée au chargement.
+  db.prepare('DELETE FROM phrases WHERE id = 200').run();
+  db.prepare('DELETE FROM shipped_phrases WHERE phrase_id = 200').run();
+  loadPhraseLibrary(db);
+  assert.ok(getPhrase(db, 200));
+  assert.equal(listPhrases(db).length, 200);
+
+  // Doublon de coréen sur une autre phrase → 409 côté API.
+  assert.throws(
+    () => replacePhrase(db, 131, { korean: '커피가 필요해요.', translation: 'X', alts: [] }),
+    ConflictError
+  );
 });
 
 test('session phrases : 15 questions phrase, aucune traduction exposée, indice', async () => {
